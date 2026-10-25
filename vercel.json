@@ -15,6 +15,5 @@
       "src": "/(.*)",
       "dest": "/api/index.py"
     }
-  ],
-  "outputDirectory": "public"
+  ]
 }
