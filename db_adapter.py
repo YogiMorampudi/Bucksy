@@ -24,7 +24,20 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 USE_POSTGRES = DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://")
 
 # ── SQLite Fallback ───────────────────────────────────────────────────────────
-DB_PATH = Path(__file__).parent / "bucksy.db"
+import shutil
+
+# On serverless (Vercel/AWS Lambda), the code directory is strictly read-only.
+# /tmp is the only writable filesystem directory.
+if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    DB_PATH = Path("/tmp/bucksy.db")
+    _src_db = Path(__file__).parent / "bucksy.db"
+    if _src_db.exists() and not DB_PATH.exists():
+        try:
+            shutil.copyfile(_src_db, DB_PATH)
+        except Exception:
+            pass
+else:
+    DB_PATH = Path(__file__).parent / "bucksy.db"
 
 # ── Placeholder Rewriter ─────────────────────────────────────────────────────
 # Converts SQLite's `?` placeholders to PostgreSQL's `%s`.
@@ -147,7 +160,7 @@ def db():
         conn = psycopg2.connect(DATABASE_URL)
         return _PgConnectionWrapper(conn)
     else:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(str(DB_PATH), timeout=15)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
