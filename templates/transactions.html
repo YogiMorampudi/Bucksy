@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Transactions{% endblock %}
+{% block page_heading %}Transactions{% endblock %}
+{% block content %}
+
+<section class="welcome-row">
+  <div>
+    <h2>Every rupee has a record.</h2>
+    <p>Add, search, filter, and export your income and spending history.</p>
+  </div>
+</section>
+
+<div class="two-col form-layout">
+  {# ── Add Transaction Form ── #}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Add Transaction</h3>
+        <p>Record money coming in or going out</p>
+      </div>
+    </div>
+    <form method="post" class="form-grid" id="addTxnForm" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>
+        Type
+        <select name="kind" required id="kindSelect">
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+        </select>
+      </label>
+      <label>
+        Amount (₹)
+        <input type="number" name="amount" min="0.01" step="0.01" placeholder="0.00" required>
+      </label>
+      <label class="full">
+        Title
+        <input name="title" placeholder="e.g. Groceries, Salary" required maxlength="100">
+      </label>
+      <label>
+        Category
+        <select name="category">
+          {% for cat in categories %}
+          <option>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Method
+        <select name="method">
+          <option>Cash</option>
+          <option>UPI</option>
+          <option>Bank transfer</option>
+          <option>Card</option>
+          <option>Other</option>
+        </select>
+      </label>
+      <label>
+        Date
+        <input type="date" name="txn_date" value="{{ today }}" required>
+      </label>
+      <label class="full">
+        Notes
+        <input name="notes" placeholder="Optional">
+      </label>
+      <button class="button primary full" type="submit">Save Transaction</button>
+    </form>
+  </section>
+
+  {# ── Quick Guide ── #}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Quick Guide</h3>
+        <p>Keep your records consistent</p>
+      </div>
+    </div>
+    <div class="tip-list">
+      <div>
+        <span class="tip-icon green">↗</span>
+        <div>
+          <strong>Income</strong>
+          <p>Salary, freelance earnings, gifts or refunds received.</p>
+        </div>
+      </div>
+      <div>
+        <span class="tip-icon red">↘</span>
+        <div>
+          <strong>Expense</strong>
+          <p>Food, shopping, subscriptions, bills and other spending.</p>
+        </div>
+      </div>
+      <div>
+        <span class="tip-icon purple">▤</span>
+        <div>
+          <strong>Money lent or borrowed?</strong>
+          <p>Record it in <a class="text-link" href="{{ url_for('khata') }}">Khata Book</a> so it isn't counted as income or expense.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+{# ── Filters & Table ── #}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h3>All Transactions</h3>
+      <p>{{ rows|length }} record{{ 's' if rows|length != 1 else '' }} shown</p>
+    </div>
+    <div class="panel-actions">
+      {% set export_url = url_for('export_transactions', q=search, kind=kind_filter, category=cat_filter, date_from=date_from, date_to=date_to) %}
+      <a class="button secondary sm" href="{{ export_url }}" title="Export current view as CSV">⬇ Export CSV</a>
+    </div>
+  </div>
+
+  {# Filters bar #}
+  <form method="get" id="filterForm">
+    <div class="filters-bar">
+      <input class="search-input" type="text" name="q" value="{{ search }}" placeholder="Search title, category, notes…">
+      <div class="filter-divider"></div>
+      <select name="kind" onchange="this.form.submit()">
+        <option value="">All types</option>
+        <option value="income" {% if kind_filter == 'income' %}selected{% endif %}>Income only</option>
+        <option value="expense" {% if kind_filter == 'expense' %}selected{% endif %}>Expense only</option>
+      </select>
+      <select name="category" onchange="this.form.submit()">
+        <option value="">All categories</option>
+        {% for cat in categories %}
+        <option value="{{ cat }}" {% if cat_filter == cat %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+      <div class="filter-divider"></div>
+      <input type="date" name="date_from" value="{{ date_from }}" title="From date" onchange="this.form.submit()">
+      <input type="date" name="date_to" value="{{ date_to }}" title="To date" onchange="this.form.submit()">
+      <div class="filter-divider"></div>
+      <button class="button secondary sm" type="submit">🔍 Search</button>
+      {% if search or kind_filter or cat_filter or date_from or date_to %}
+      <a class="button secondary sm" href="{{ url_for('transactions') }}">✕ Clear</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Transaction</th>
+          <th>Category</th>
+          <th>Method</th>
+          <th>Date</th>
+          <th style="text-align:right;">Amount</th>
+          <th style="text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in rows %}
+        <tr>
+          <td>
+            <div class="transaction-name">
+              <span class="txn-dot {{ t.kind }}"></span>
+              <div>
+                <strong>{{ t.title }}</strong>
+                {% if t.notes %}<div style="font-size:11px;color:var(--muted2);margin-top:1px;">{{ t.notes }}</div>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td><span class="cat-badge">{{ t.category }}</span></td>
+          <td><span class="method-badge">{{ t.method }}</span></td>
+          <td style="font-variant-numeric:tabular-nums;font-size:12px;">{{ t.txn_date }}</td>
+          <td class="amount {{ t.kind }}">{{ '+' if t.kind == 'income' else '−' }}{{ t.amount|inr }}</td>
+          <td>
+            <div class="table-actions">
+              <a href="{{ url_for('edit_transaction', txn_id=t.id) }}" class="edit-btn" title="Edit">✎</a>
+              <button type="button" class="del-btn" title="Delete"
+                      onclick="confirmDelete({{ t.id }}, '{{ t.title|replace("'", "\\'") }}')">🗑</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">⇄</div>
+    <h3>No transactions found</h3>
+    <p>{% if search or kind_filter or cat_filter %}Try adjusting your filters.{% else %}Add your first income or expense above.{% endif %}</p>
+    {% if search or kind_filter or cat_filter %}
+    <a class="button secondary" href="{{ url_for('transactions') }}">Clear filters</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<script>
+function confirmDelete(id, title) {
+  document.getElementById('deleteModalTitle').textContent = 'Delete "' + title + '"?';
+  document.getElementById('deleteForm').action = '/transactions/' + id + '/delete';
+  document.getElementById('deleteModal').classList.add('show');
+}
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.remove('show');
+}
+document.getElementById('deleteModal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeDeleteModal();
+});
+</script>
+{% endblock %}

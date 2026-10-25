@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}Edit Goal · {{ goal.goal_name }}{% endblock %}
+{% block page_heading %}Edit Goal{% endblock %}
+{% block content %}
+
+{# ── Top Header ── #}
+<section class="welcome-row">
+  <div>
+    <h2>Edit Goal: {{ goal.goal_name }}</h2>
+    <p>Update your target price, current savings, contributions, or status.</p>
+  </div>
+  <div class="welcome-actions">
+    <a class="button secondary" href="{{ url_for('achievements') }}">← Back to Goals</a>
+  </div>
+</section>
+
+<div class="two-col form-layout">
+  <div>
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <h3>Goal Configuration</h3>
+          <p>Modify parameters to recalculate your timeline</p>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('edit_goal', goal_id=goal.id) }}" id="editGoalForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid">
+          <label class="full">
+            Goal Name *
+            <input type="text" name="goal_name" id="goal_name" value="{{ goal.goal_name }}" required oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Category
+            <select name="category" id="category" onchange="updateLivePreview()">
+              {% for c in categories %}
+                <option value="{{ c }}" {% if goal.category == c %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label>
+            Model / Variant Details
+            <input type="text" name="product_model" id="product_model" value="{{ goal.product_model }}" oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Target Price (₹) *
+            <input type="number" name="price" id="price" min="1" step="10" value="{{ goal.price }}" required oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Extra Costs (Insurance, Accessories, etc.) (₹)
+            <input type="number" name="extra_costs" id="extra_costs" min="0" step="10" value="{{ goal.extra_costs }}" oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Current Amount Saved (₹)
+            <input type="number" name="current_savings" id="current_savings" min="0" step="10" value="{{ goal.current_savings }}" oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Saving Frequency
+            <select name="saving_frequency" id="saving_frequency" onchange="updateLivePreview()">
+              <option value="daily" {% if goal.saving_frequency == 'daily' %}selected{% endif %}>Daily</option>
+              <option value="weekly" {% if goal.saving_frequency == 'weekly' %}selected{% endif %}>Weekly</option>
+              <option value="monthly" {% if goal.saving_frequency == 'monthly' %}selected{% endif %}>Monthly</option>
+            </select>
+          </label>
+
+          <label class="full">
+            Saving Contribution per period (₹) *
+            <input type="number" name="saving_amount" id="saving_amount" min="1" step="5" value="{{ goal.saving_amount }}" required oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Optional Target Purchase Date
+            <input type="date" name="target_date" id="target_date" value="{{ goal.target_date }}" onchange="updateLivePreview()">
+          </label>
+
+          <label>
+            Priority
+            <select name="priority" id="priority">
+              <option value="High" {% if goal.priority == 'High' %}selected{% endif %}>High Priority</option>
+              <option value="Medium" {% if goal.priority == 'Medium' %}selected{% endif %}>Medium Priority</option>
+              <option value="Low" {% if goal.priority == 'Low' %}selected{% endif %}>Low Priority</option>
+            </select>
+          </label>
+
+          <label>
+            Status
+            <select name="status" id="status">
+              <option value="active" {% if goal.status == 'active' %}selected{% endif %}>In Progress (Active)</option>
+              <option value="achieved" {% if goal.status == 'achieved' %}selected{% endif %}>Goal Achieved ✓</option>
+              <option value="cancelled" {% if goal.status == 'cancelled' %}selected{% endif %}>Paused / Cancelled</option>
+            </select>
+          </label>
+
+          <label>
+            Price Source Attribution
+            <input type="text" name="product_source" id="product_source" value="{{ goal.product_source }}">
+          </label>
+
+          <input type="hidden" name="image_url" id="image_url" value="{{ goal.image_url }}">
+
+          <label class="full">
+            Notes & Comments
+            <textarea name="notes" id="notes">{{ goal.notes }}</textarea>
+          </label>
+
+          <div class="full" style="margin-top:14px; display:flex; gap:10px;">
+            <button type="submit" class="button primary" style="flex:1;">Save Changes</button>
+            <a class="button secondary" href="{{ url_for('achievements') }}">Cancel</a>
+          </div>
+        </div>
+      </form>
+    </article>
+  </div>
+
+  {# ── Preview Column ── #}
+  <div>
+    <article class="panel" style="position:sticky; top:20px; background:var(--panel2);">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow" style="color:var(--accent);">UPDATED PROJECTION</span>
+          <h3 id="prev-goal-title">{{ goal.goal_name }}</h3>
+          <p id="prev-goal-source" style="font-size:11px; color:var(--muted2);">Source: {{ goal.product_source or 'User entered price' }}</p>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+        <div class="sim-stat-box">
+          <small>Total Target Price</small>
+          <strong id="prev-total-target" style="color:var(--text);">—</strong>
+          <span id="prev-extra-breakdown" style="font-size:10px; color:var(--muted2); display:block; margin-top:2px;"></span>
+        </div>
+        <div class="sim-stat-box">
+          <small>Remaining to Save</small>
+          <strong id="prev-remaining" class="red-text">—</strong>
+          <span id="prev-saved-note" style="font-size:10px; color:var(--muted2); display:block; margin-top:2px;"></span>
+        </div>
+      </div>
+
+      <div class="savings-bar-wrap" style="margin-bottom:18px;">
+        <div class="savings-label">
+          <span>Target Progress</span>
+          <strong id="prev-pct" style="color:var(--accent);">0%</strong>
+        </div>
+        <div class="savings-bar" style="height:10px;">
+          <div class="savings-bar-fill" id="prev-bar" style="width:0%;"></div>
+        </div>
+      </div>
+
+      <div class="sim-stat-box" style="margin-bottom:16px;">
+        <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; margin-bottom:6px;">Estimated Achievement Date</div>
+        <div id="prev-est-date" class="green-text" style="font:700 24px 'Space Grotesk',sans-serif; letter-spacing:-0.5px;">—</div>
+        <div id="prev-days-count" style="font-size:12px; color:var(--muted); margin-top:4px;">Calculating...</div>
+      </div>
+
+      <div id="prev-target-date-check" style="display:none; padding:10px 14px; border-radius:10px; margin-bottom:16px; font-size:12px;"></div>
+    </article>
+  </div>
+</div>
+
+<script>
+function formatINR(val) {
+  const n = Math.round(Number(val) || 0);
+  return '₹' + n.toLocaleString('en-IN');
+}
+
+function addCalendarMonthsJS(d, months) {
+  if (months <= 0) return new Date(d);
+  const target = new Date(d);
+  const curDay = target.getDate();
+  target.setDate(1);
+  target.setMonth(target.getMonth() + months);
+  const maxDays = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(curDay, maxDays));
+  return target;
+}
+
+function updateLivePreview() {
+  const name = document.getElementById('goal_name').value.trim() || 'Goal Preview';
+  const source = document.getElementById('product_source').value.trim() || 'User entered price';
+  const price = parseFloat(document.getElementById('price').value) || 0;
+  const extra = parseFloat(document.getElementById('extra_costs').value) || 0;
+  const saved = parseFloat(document.getElementById('current_savings').value) || 0;
+  const amount = parseFloat(document.getElementById('saving_amount').value) || 0;
+  const freq = document.getElementById('saving_frequency').value;
+  const targetDateVal = document.getElementById('target_date').value;
+
+  const totalTarget = price + extra;
+  const remaining = Math.max(0, totalTarget - saved);
+
+  document.getElementById('prev-goal-title').textContent = name;
+  document.getElementById('prev-goal-source').textContent = 'Source: ' + source;
+  document.getElementById('prev-total-target').textContent = formatINR(totalTarget);
+  document.getElementById('prev-extra-breakdown').textContent = extra > 0 ? `(Price ${formatINR(price)} + Extras ${formatINR(extra)})` : '';
+  
+  const remEl = document.getElementById('prev-remaining');
+  remEl.textContent = formatINR(remaining);
+  remEl.className = remaining === 0 ? 'green-text' : 'red-text';
+  document.getElementById('prev-saved-note').textContent = formatINR(saved) + ' saved so far';
+
+  const pct = totalTarget > 0 ? Math.min(100, Math.max(0, (saved / totalTarget) * 100)) : 100;
+  document.getElementById('prev-pct').textContent = pct.toFixed(1) + '%';
+  document.getElementById('prev-bar').style.width = pct + '%';
+
+  const today = new Date();
+  let daysRequired = 0;
+  let estDate = new Date();
+
+  if (remaining <= 0) {
+    document.getElementById('prev-est-date').textContent = 'Goal achieved! 🎉';
+    document.getElementById('prev-days-count').textContent = 'Current savings already meet the target!';
+  } else if (amount <= 0) {
+    document.getElementById('prev-est-date').textContent = '—';
+    document.getElementById('prev-days-count').textContent = 'Contribution must be greater than ₹0';
+  } else {
+    if (freq === 'daily') {
+      daysRequired = Math.ceil(remaining / amount);
+      estDate = new Date(today);
+      estDate.setDate(estDate.getDate() + daysRequired);
+    } else if (freq === 'weekly') {
+      const weeksRequired = Math.ceil(remaining / amount);
+      daysRequired = weeksRequired * 7;
+      estDate = new Date(today);
+      estDate.setDate(estDate.getDate() + daysRequired);
+    } else if (freq === 'monthly') {
+      const monthsRequired = Math.ceil(remaining / amount);
+      estDate = addCalendarMonthsJS(today, monthsRequired);
+      const diffTime = Math.abs(estDate - today);
+      daysRequired = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    const approxMonths = Math.ceil(daysRequired / 30.4375);
+    const dateFormatted = estDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    document.getElementById('prev-est-date').textContent = dateFormatted;
+    document.getElementById('prev-days-count').textContent = `In ${daysRequired.toLocaleString()} days (approx ${approxMonths} month${approxMonths !== 1 ? 's' : ''})`;
+
+    const checkEl = document.getElementById('prev-target-date-check');
+    if (targetDateVal) {
+      checkEl.style.display = 'block';
+      const targetD = new Date(targetDateVal);
+      if (estDate <= targetD) {
+        checkEl.style.background = 'rgba(168,240,107,.12)';
+        checkEl.style.color = 'var(--green)';
+        checkEl.style.border = '1px solid rgba(168,240,107,.3)';
+        checkEl.innerHTML = `✓ <strong>On Track:</strong> Estimated date is before your target deadline.`;
+      } else {
+        const daysLag = Math.ceil((estDate - targetD) / (1000 * 60 * 60 * 24));
+        checkEl.style.background = 'rgba(255,123,131,.12)';
+        checkEl.style.color = 'var(--red)';
+        checkEl.style.border = '1px solid rgba(255,123,131,.3)';
+        checkEl.innerHTML = `⚠️ <strong>Pace Alert:</strong> Estimated to take ${daysLag} days past target deadline.`;
+      }
+    } else {
+      checkEl.style.display = 'none';
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', updateLivePreview);
+</script>
+{% endblock %}

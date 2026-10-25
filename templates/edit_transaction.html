@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Edit Transaction{% endblock %}
+{% block page_heading %}Edit Transaction{% endblock %}
+{% block content %}
+
+<section class="welcome-row">
+  <div>
+    <a class="text-link" href="{{ url_for('transactions') }}">← Back to Transactions</a>
+    <h2>Edit Transaction</h2>
+    <p>Update the details for this recorded entry.</p>
+  </div>
+</section>
+
+<div class="two-col form-layout">
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Transaction Details</h3>
+        <p>ID #{{ txn.id }} · Originally recorded {{ txn.txn_date }}</p>
+      </div>
+      <span class="stat-icon {{ txn.kind == 'income' and 'green' or 'red' }}">
+        {{ '↗' if txn.kind == 'income' else '↘' }}
+      </span>
+    </div>
+    <form method="post" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>
+        Type
+        <select name="kind" required>
+          <option value="expense" {% if txn.kind == 'expense' %}selected{% endif %}>Expense</option>
+          <option value="income"  {% if txn.kind == 'income'  %}selected{% endif %}>Income</option>
+        </select>
+      </label>
+      <label>
+        Amount (₹)
+        <input type="number" name="amount" min="0.01" step="0.01"
+               value="{{ txn.amount }}" required>
+      </label>
+      <label class="full">
+        Title
+        <input name="title" value="{{ txn.title }}" required maxlength="100">
+      </label>
+      <label>
+        Category
+        <select name="category">
+          {% for cat in categories %}
+          <option {% if txn.category == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Method
+        <select name="method">
+          {% for m in methods %}
+          <option {% if txn.method == m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Date
+        <input type="date" name="txn_date" value="{{ txn.txn_date }}" required>
+      </label>
+      <label class="full">
+        Notes
+        <input name="notes" value="{{ txn.notes or '' }}" placeholder="Optional">
+      </label>
+      <div style="display:flex;gap:10px;grid-column:1/-1;">
+        <button class="button primary" type="submit" style="flex:1;">Save Changes</button>
+        <a class="button secondary" href="{{ url_for('transactions') }}" style="flex:1;text-align:center;">Cancel</a>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Current Record</h3>
+        <p>Values before your edit</p>
+      </div>
+    </div>
+    <div style="display:grid;gap:14px;">
+      <div style="padding:16px;background:var(--panel2);border-radius:var(--radius-sm);border:1px solid var(--border);">
+        <div class="transaction-name" style="margin-bottom:12px;">
+          <span class="txn-dot {{ txn.kind }}"></span>
+          <strong style="font-size:15px;">{{ txn.title }}</strong>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <small style="font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:3px;">Amount</small>
+            <strong class="{{ 'green-text' if txn.kind == 'income' else 'red-text' }}"
+                    style="font:700 18px 'Space Grotesk',sans-serif;letter-spacing:-0.5px;">
+              {{ txn.amount|inr }}
+            </strong>
+          </div>
+          <div>
+            <small style="font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:3px;">Category</small>
+            <span class="cat-badge" style="font-size:12px;">{{ txn.category }}</span>
+          </div>
+          <div>
+            <small style="font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:3px;">Method</small>
+            <span class="method-badge" style="font-size:12px;">{{ txn.method }}</span>
+          </div>
+          <div>
+            <small style="font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:3px;">Date</small>
+            <strong style="font:600 13px 'Space Grotesk',sans-serif;">{{ txn.txn_date }}</strong>
+          </div>
+        </div>
+        {% if txn.notes %}
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <small style="font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px;">Notes</small>
+          <span style="font-size:12.5px;color:var(--muted);">{{ txn.notes }}</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <div style="padding:14px;background:rgba(255,123,131,.05);border-radius:var(--radius-sm);border:1px solid rgba(255,123,131,.15);">
+        <div style="font-size:12px;color:var(--red);font-weight:600;margin-bottom:8px;">⚠ Danger zone</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Permanently delete this transaction. This cannot be undone.</p>
+        <button type="button" class="button danger sm"
+                onclick="confirmDelete({{ txn.id }}, '{{ txn.title|replace("'", "\\'") }}')">🗑 Delete this transaction</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+function confirmDelete(id, title) {
+  document.getElementById('deleteModalTitle').textContent = 'Delete "' + title + '"?';
+  document.getElementById('deleteForm').action = '/transactions/' + id + '/delete';
+  document.getElementById('deleteModal').classList.add('show');
+}
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.remove('show');
+}
+document.getElementById('deleteModal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeDeleteModal();
+});
+</script>
+{% endblock %}

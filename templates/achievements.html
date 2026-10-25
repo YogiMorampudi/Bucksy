@@ -1,0 +1,562 @@
+{% extends "base.html" %}
+{% block title %}Achievements & Goal Planner{% endblock %}
+{% block page_heading %}Achievement Calculator{% endblock %}
+{% block content %}
+
+{# ── Top Header Row ── #}
+<section class="welcome-row">
+  <div>
+    <h2>Goal Planner & Achievement Calculator 🎯</h2>
+    <p>Estimate when you can afford your next dream purchase based on your real savings capacity.</p>
+  </div>
+  <div class="welcome-actions">
+    <a class="button primary" href="{{ url_for('new_goal') }}">＋ Create New Goal</a>
+    <a class="button secondary" href="#simulator-section">⚡ Live Simulator</a>
+  </div>
+</section>
+
+{# ── Dashboard Metrics ── #}
+<section class="stats-grid">
+  <article class="stat-card balance-card">
+    <div class="stat-top">
+      <span>Total Goal Value</span>
+      <span class="stat-icon green">🎯</span>
+    </div>
+    <div class="stat-value">{{ total_target|inr }}</div>
+    <div class="stat-foot">{{ total_goals }} tracked goal{{ 's' if total_goals != 1 else '' }}</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top">
+      <span>Total Saved Toward Goals</span>
+      <span class="stat-icon green">↗</span>
+    </div>
+    <div class="stat-value">{{ total_saved|inr }}</div>
+    <div class="stat-foot">
+      {% if total_target > 0 %}
+        {{ ((total_saved / total_target) * 100)|round(1) }}% of total target achieved
+      {% else %}
+        0% saved
+      {% endif %}
+    </div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top">
+      <span>Remaining to Save</span>
+      <span class="stat-icon red">⏳</span>
+    </div>
+    <div class="stat-value">{{ total_remaining|inr }}</div>
+    <div class="stat-foot">Across all active plans</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top">
+      <span>Achievements Status</span>
+      <span class="stat-icon purple">🏆</span>
+    </div>
+    <div class="stat-value">{{ completed_count }} / {{ total_goals }}</div>
+    <div class="stat-foot">
+      {% if earliest_date %}
+        Next goal: <strong>{{ earliest_date }}</strong>
+      {% else %}
+        {{ completed_count }} completed
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+{# ── Goals Management Section ── #}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h3>Your Financial Goals</h3>
+      <p>Track progress, estimate timelines, and simulate adjustments</p>
+    </div>
+    <div class="panel-actions">
+      <a class="button primary sm" href="{{ url_for('new_goal') }}">＋ New Goal</a>
+    </div>
+  </div>
+
+  {# ── Filter and Sort Toolbar ── #}
+  <div class="filters-bar" style="justify-content: space-between;">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <span style="font-size:11px; font-weight:700; color:var(--muted2); text-transform:uppercase; letter-spacing:1px;">Status:</span>
+      <a href="{{ url_for('achievements', status='all', sort=sort, cat=cat_filter) }}"
+         class="month-tab {% if status_filter == 'all' %}active{% endif %}">All ({{ total_goals }})</a>
+      <a href="{{ url_for('achievements', status='active', sort=sort, cat=cat_filter) }}"
+         class="month-tab {% if status_filter == 'active' %}active{% endif %}">In Progress ({{ total_goals - completed_count }})</a>
+      <a href="{{ url_for('achievements', status='achieved', sort=sort, cat=cat_filter) }}"
+         class="month-tab {% if status_filter == 'achieved' %}active{% endif %}">Achieved ({{ completed_count }})</a>
+    </div>
+
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <form method="get" action="{{ url_for('achievements') }}" style="display:flex; gap:8px; align-items:center;">
+        <input type="hidden" name="status" value="{{ status_filter }}">
+        <select name="cat" onchange="this.form.submit()" style="padding:6px 10px; font-size:12px;">
+          <option value="">All Categories</option>
+          {% for c in categories %}
+            <option value="{{ c }}" {% if cat_filter == c %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+
+        <select name="sort" onchange="this.form.submit()" style="padding:6px 10px; font-size:12px;">
+          <option value="recent" {% if sort == 'recent' %}selected{% endif %}>Sort: Recently Created</option>
+          <option value="date" {% if sort == 'date' %}selected{% endif %}>Sort: Earliest Target Date</option>
+          <option value="priority" {% if sort == 'priority' %}selected{% endif %}>Sort: Highest Priority</option>
+          <option value="remaining" {% if sort == 'remaining' %}selected{% endif %}>Sort: Lowest Remaining</option>
+        </select>
+      </form>
+    </div>
+  </div>
+
+  {# ── Goals Grid ── #}
+  {% if goals %}
+  <div class="goals-grid">
+    {% for g in goals %}
+    <article class="goal-card {% if g.is_achieved %}goal-card-achieved{% endif %}">
+      {# Top Row: Priority & Category #}
+      <div class="goal-card-top">
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <span class="cat-badge">{{ g.category }}</span>
+          <span class="priority-badge priority-{{ g.priority|lower }}">{{ g.priority }} Priority</span>
+        </div>
+        <div class="goal-card-actions">
+          <button class="icon-action-btn" title="Add Savings" onclick="openDepositModal({{ g.id }}, '{{ g.goal_name|escape }}', {{ g.remaining_amount }})">＋₹</button>
+          <button class="icon-action-btn" title="Simulate this goal" onclick="loadGoalIntoSimulator({{ g.price }}, {{ g.current_savings }}, {{ g.extra_costs }}, '{{ g.saving_frequency }}', {{ g.saving_amount }}, '{{ g.goal_name|escape }}')">⚡</button>
+          <a class="icon-action-btn" title="Edit goal" href="{{ url_for('edit_goal', goal_id=g.id) }}">✎</a>
+          <form method="post" action="{{ url_for('toggle_goal_status', goal_id=g.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="icon-action-btn {% if g.is_achieved %}active-check{% endif %}" title="Toggle Achieved">
+              {{ '✓' if g.is_achieved else '○' }}
+            </button>
+          </form>
+          <button class="icon-action-btn del" title="Delete goal" onclick="openDeleteGoalModal({{ g.id }}, '{{ g.goal_name|escape }}')">🗑</button>
+        </div>
+      </div>
+
+      {# Goal Title & Model #}
+      <div class="goal-card-body">
+        <h3 class="goal-title">{{ g.goal_name }}</h3>
+        {% if g.product_model %}
+          <div class="goal-subtitle">{{ g.product_model }}</div>
+        {% endif %}
+        {% if g.product_source %}
+          <div class="goal-source">Source: {{ g.product_source }}</div>
+        {% endif %}
+
+        {# Pricing & Remaining Box #}
+        <div class="goal-pricing-row">
+          <div>
+            <small>Target Price</small>
+            <strong>{{ g.total_target|inr }}</strong>
+            {% if g.extra_costs > 0 %}
+              <div style="font-size:10px; color:var(--muted2);">incl. {{ g.extra_costs|inr }} extras</div>
+            {% endif %}
+          </div>
+          <div style="text-align:right;">
+            <small>{{ 'Status' if g.is_achieved else 'Remaining' }}</small>
+            {% if g.is_achieved %}
+              <strong class="green-text">ACHIEVED! 🎉</strong>
+            {% else %}
+              <strong class="red-text">{{ g.remaining_amount|inr }}</strong>
+            {% endif %}
+          </div>
+        </div>
+
+        {# Progress Bar #}
+        <div class="savings-bar-wrap" style="margin: 14px 0 10px;">
+          <div class="savings-label">
+            <span>Saved: {{ g.current_savings|inr }}</span>
+            <span style="font-weight:700; color:var(--accent);">{{ g.progress_pct }}%</span>
+          </div>
+          <div class="savings-bar" style="height:8px;">
+            <div class="savings-bar-fill {% if g.is_achieved %}achieved-fill{% endif %}"
+                 style="width: {{ g.progress_pct }}%;"></div>
+          </div>
+        </div>
+
+        {# Timeline & Schedule Badge #}
+        <div class="goal-timeline-row">
+          <div class="schedule-pill">
+            <span>{{ g.saving_amount|inr }}</span> / {{ g.saving_frequency }}
+          </div>
+          <div class="completion-pill">
+            {% if g.is_achieved %}
+              <span class="green-text">Ready to buy!</span>
+            {% elif g.days_required is not none %}
+              <span>Est: <strong>{{ g.estimated_date }}</strong> ({{ g.days_required }} days)</span>
+            {% else %}
+              <span class="muted-text">Plan paused</span>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if g.target_date %}
+          <div style="margin-top:10px; font-size:11px; color:var(--muted2);">
+            Target date: {{ g.target_date }}
+          </div>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">🎯</div>
+    <h3>No goals created yet</h3>
+    <p>Set a target for a new smartphone, bike, car, laptop, travel trip or custom dream purchase.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:16px;">
+      <a class="button primary" href="{{ url_for('new_goal') }}">＋ Create Your First Goal</a>
+      <a class="button secondary" href="{{ url_for('new_goal', name='Royal Enfield Hunter 350', category='Vehicles & Bikes') }}">🏍️ Bike Goal</a>
+      <a class="button secondary" href="{{ url_for('new_goal', name='Apple iPhone 17', category='Smartphones') }}">📱 iPhone Goal</a>
+      <a class="button secondary" href="{{ url_for('new_goal', name='MacBook Air M3', category='Laptops & Computing') }}">💻 Laptop Goal</a>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+{# ── Interactive Savings Simulator ── #}
+<section class="panel" id="simulator-section">
+  <div class="panel-heading">
+    <div>
+      <span class="eyebrow" style="color:var(--accent);">LIVE CALCULATOR</span>
+      <h3>Interactive Savings Simulator</h3>
+      <p>Adjust contribution amounts and frequencies to see instant changes in your achievement date</p>
+    </div>
+    <div class="panel-actions">
+      <span class="today-pill" id="sim-active-goal-name">General Target</span>
+    </div>
+  </div>
+
+  <div class="two-col form-layout">
+    {# Simulator Controls #}
+    <div class="panel" style="background:var(--panel2); margin:0;">
+      <h4 style="font-size:14px; margin-bottom:14px; color:var(--text);">1. Target & Savings Parameters</h4>
+      <div class="form-grid">
+        <label>
+          Target Price (₹)
+          <input type="number" id="sim-target" value="80000" min="1" step="100" oninput="runLiveSimulator()">
+        </label>
+        <label>
+          Current Savings (₹)
+          <input type="number" id="sim-saved" value="10000" min="0" step="100" oninput="runLiveSimulator()">
+        </label>
+        <label class="full">
+          Extra Costs (Insurance, Accessories, Registration) (₹)
+          <input type="number" id="sim-extra" value="0" min="0" step="50" oninput="runLiveSimulator()">
+        </label>
+      </div>
+
+      <h4 style="font-size:14px; margin:20px 0 10px; color:var(--text);">2. Saving Frequency & Contribution</h4>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <button type="button" class="freq-btn active" id="btn-freq-daily" onclick="setSimFrequency('daily')">Daily</button>
+        <button type="button" class="freq-btn" id="btn-freq-weekly" onclick="setSimFrequency('weekly')">Weekly</button>
+        <button type="button" class="freq-btn" id="btn-freq-monthly" onclick="setSimFrequency('monthly')">Monthly</button>
+      </div>
+
+      <label style="display:grid; gap:7px; color:var(--muted); font-size:11.5px; font-weight:600;">
+        <span>Contribution Amount per period (₹)</span>
+        <input type="number" id="sim-amount" value="100" min="1" step="10" oninput="runLiveSimulator()">
+      </label>
+
+      {# Quick Preset Buttons #}
+      <div style="margin-top:12px;">
+        <span style="font-size:10px; color:var(--muted2); text-transform:uppercase; letter-spacing:.8px; display:block; margin-bottom:6px;">
+          Quick Daily Presets:
+        </span>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" class="preset-btn" onclick="applySimPreset(10)">₹10/day</button>
+          <button type="button" class="preset-btn" onclick="applySimPreset(50)">₹50/day</button>
+          <button type="button" class="preset-btn active" onclick="applySimPreset(100)">₹100/day</button>
+          <button type="button" class="preset-btn" onclick="applySimPreset(250)">₹250/day</button>
+          <button type="button" class="preset-btn" onclick="applySimPreset(500)">₹500/day</button>
+          <button type="button" class="preset-btn" onclick="applySimPreset(1000)">₹1,000/day</button>
+        </div>
+      </div>
+    </div>
+
+    {# Simulator Output Cards #}
+    <div class="panel" style="background:var(--panel2); margin:0;">
+      <h4 style="font-size:14px; margin-bottom:14px; color:var(--text);">3. Real-Time Projections</h4>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+        <div class="sim-stat-box">
+          <small>Remaining Target</small>
+          <strong id="sim-res-remaining" class="red-text">₹70,000</strong>
+        </div>
+        <div class="sim-stat-box">
+          <small>Estimated Date</small>
+          <strong id="sim-res-date" class="green-text">—</strong>
+        </div>
+      </div>
+
+      <div class="sim-stat-box" style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <small>Time Required</small>
+            <strong id="sim-res-time" style="font-size:22px;">700 days</strong>
+          </div>
+          <div style="text-align:right;">
+            <small>Approximate Months</small>
+            <strong id="sim-res-months" style="font-size:18px; color:var(--accent);">23 months</strong>
+          </div>
+        </div>
+      </div>
+
+      {# Progress Bar #}
+      <div class="savings-bar-wrap" style="margin-bottom:18px;">
+        <div class="savings-label">
+          <span id="sim-res-saved-label">Current Progress</span>
+          <span id="sim-res-pct" style="font-weight:700; color:var(--accent);">12.5%</span>
+        </div>
+        <div class="savings-bar" style="height:9px;">
+          <div class="savings-bar-fill" id="sim-res-bar" style="width: 12.5%;"></div>
+        </div>
+      </div>
+
+      {# Scenarios Comparison Table #}
+      <div style="margin-top:14px;">
+        <h5 style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+          Daily Saving Scenarios Comparison
+        </h5>
+        <div class="table-wrap">
+          <table style="font-size:12px;">
+            <thead>
+              <tr>
+                <th>Daily Saving</th>
+                <th>Monthly Pace</th>
+                <th>Days Needed</th>
+                <th>Target Date</th>
+              </tr>
+            </thead>
+            <tbody id="sim-scenarios-body">
+              {# Injected by JS #}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p class="footnote" style="margin-top:14px;">
+        * Note: Estimated completion dates assume consistent savings. Calculations use exact calendar arithmetic including variable month lengths and leap years.
+      </p>
+    </div>
+  </div>
+</section>
+
+{# ── Quick Deposit Modal ── #}
+<div class="modal-overlay" id="depositModal" role="dialog" aria-modal="true" aria-labelledby="depositModalTitle">
+  <div class="modal-box" style="max-width:420px; text-align:left;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 id="depositModalTitle" style="margin:0;">Record Savings Deposit</h3>
+      <button class="icon-action-btn" onclick="closeDepositModal()">✕</button>
+    </div>
+    <p style="font-size:12px; color:var(--muted); margin-bottom:16px;">
+      Add money you've allocated towards <strong id="depositGoalName" style="color:var(--text);">this goal</strong>.
+    </p>
+    <form id="depositForm" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label style="display:grid; gap:6px; margin-bottom:14px; font-size:12px; font-weight:600; color:var(--muted);">
+        Deposit Amount (₹)
+        <input type="number" name="deposit_amount" id="depositInput" min="1" step="10" placeholder="e.g. 500" required
+               style="padding:10px 12px; background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:8px;">
+      </label>
+      <div style="display:flex; gap:6px; margin-bottom:18px;">
+        <button type="button" class="preset-btn" onclick="document.getElementById('depositInput').value=100">+₹100</button>
+        <button type="button" class="preset-btn" onclick="document.getElementById('depositInput').value=500">+₹500</button>
+        <button type="button" class="preset-btn" onclick="document.getElementById('depositInput').value=1000">+₹1,000</button>
+        <button type="button" class="preset-btn" onclick="document.getElementById('depositInput').value=5000">+₹5,000</button>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-end;">
+        <button type="button" class="button secondary" onclick="closeDepositModal()">Cancel</button>
+        <button type="submit" class="button primary">Save Deposit</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Goal Delete Modal ── #}
+<div class="modal-overlay" id="goalDeleteModal" role="dialog" aria-modal="true" aria-labelledby="goalDeleteModalTitle">
+  <div class="modal-box">
+    <div class="empty-icon" style="margin:0 auto 14px;">🗑</div>
+    <h3 id="goalDeleteModalTitle">Delete Goal?</h3>
+    <p>Are you sure you want to remove <strong id="deleteGoalTitle" style="color:var(--text);">this goal</strong>? This record will be permanently deleted.</p>
+    <div class="modal-actions">
+      <button class="button secondary" onclick="closeDeleteGoalModal()">Cancel</button>
+      <form id="deleteGoalForm" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="button danger">Yes, delete goal</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// Simulator state
+let simFrequency = 'daily';
+
+function setSimFrequency(freq) {
+  simFrequency = freq;
+  document.querySelectorAll('.freq-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('btn-freq-' + freq);
+  if (btn) btn.classList.add('active');
+  runLiveSimulator();
+}
+
+function applySimPreset(amt) {
+  document.getElementById('sim-amount').value = amt;
+  setSimFrequency('daily');
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  runLiveSimulator();
+}
+
+function formatINR(val) {
+  const n = Math.round(Number(val) || 0);
+  return '₹' + n.toLocaleString('en-IN');
+}
+
+// Add calendar months helper with leap year support in JS
+function addCalendarMonthsJS(d, months) {
+  if (months <= 0) return new Date(d);
+  const target = new Date(d);
+  const curDay = target.getDate();
+  target.setDate(1);
+  target.setMonth(target.getMonth() + months);
+  // Get max days in destination month
+  const maxDays = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(curDay, maxDays));
+  return target;
+}
+
+function runLiveSimulator() {
+  const target = parseFloat(document.getElementById('sim-target').value) || 0;
+  const saved = parseFloat(document.getElementById('sim-saved').value) || 0;
+  const extra = parseFloat(document.getElementById('sim-extra').value) || 0;
+  const amount = parseFloat(document.getElementById('sim-amount').value) || 0;
+
+  const totalTarget = target + extra;
+  const remaining = Math.max(0, totalTarget - saved);
+
+  // Remaining output
+  const remEl = document.getElementById('sim-res-remaining');
+  remEl.textContent = formatINR(remaining);
+  if (remaining === 0) {
+    remEl.textContent = '₹0 (Achieved!)';
+    remEl.className = 'green-text';
+  } else {
+    remEl.className = 'red-text';
+  }
+
+  // Progress Bar
+  const pct = totalTarget > 0 ? Math.min(100, Math.max(0, (saved / totalTarget) * 100)) : 100;
+  document.getElementById('sim-res-pct').textContent = pct.toFixed(1) + '%';
+  document.getElementById('sim-res-bar').style.width = pct + '%';
+  document.getElementById('sim-res-saved-label').textContent = 'Saved ' + formatINR(saved) + ' of ' + formatINR(totalTarget);
+
+  const today = new Date();
+  let daysRequired = 0;
+  let estDate = new Date();
+
+  if (remaining <= 0) {
+    document.getElementById('sim-res-time').textContent = 'Goal achieved!';
+    document.getElementById('sim-res-months').textContent = '0 months';
+    document.getElementById('sim-res-date').textContent = 'Ready now! 🎉';
+  } else if (amount <= 0) {
+    document.getElementById('sim-res-time').textContent = 'Contribution must be > ₹0';
+    document.getElementById('sim-res-months').textContent = '—';
+    document.getElementById('sim-res-date').textContent = 'Enter saving rate';
+  } else {
+    if (simFrequency === 'daily') {
+      daysRequired = Math.ceil(remaining / amount);
+      estDate = new Date(today);
+      estDate.setDate(estDate.getDate() + daysRequired);
+    } else if (simFrequency === 'weekly') {
+      const weeksRequired = Math.ceil(remaining / amount);
+      daysRequired = weeksRequired * 7;
+      estDate = new Date(today);
+      estDate.setDate(estDate.getDate() + daysRequired);
+    } else if (simFrequency === 'monthly') {
+      const monthsRequired = Math.ceil(remaining / amount);
+      estDate = addCalendarMonthsJS(today, monthsRequired);
+      const diffTime = Math.abs(estDate - today);
+      daysRequired = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    const approxMonths = Math.ceil(daysRequired / 30.4375);
+    document.getElementById('sim-res-time').textContent = daysRequired.toLocaleString() + ' days';
+    document.getElementById('sim-res-months').textContent = approxMonths + ' month' + (approxMonths !== 1 ? 's' : '');
+    
+    const options = { day: 'numeric', month: 'short', year: 'numeric' };
+    document.getElementById('sim-res-date').textContent = estDate.toLocaleDateString('en-GB', options);
+  }
+
+  // Scenarios table
+  const presets = [10, 50, 100, 250, 500, 1000, 2000];
+  const tbody = document.getElementById('sim-scenarios-body');
+  if (tbody) {
+    tbody.innerHTML = presets.map(pAmt => {
+      let dNeeded = 0;
+      let pDate = new Date(today);
+      if (remaining > 0) {
+        dNeeded = Math.ceil(remaining / pAmt);
+        pDate.setDate(pDate.getDate() + dNeeded);
+      }
+      const isCurrent = (simFrequency === 'daily' && Math.round(amount) === pAmt);
+      const dateStr = remaining <= 0 ? 'Achieved' : pDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      return `
+        <tr class="${isCurrent ? 'scenario-active-row' : ''}">
+          <td><strong>${formatINR(pAmt)}/day</strong> ${isCurrent ? '★' : ''}</td>
+          <td>${formatINR(pAmt * 30)}/mo</td>
+          <td><strong>${dNeeded.toLocaleString()}</strong> days</td>
+          <td style="color:${isCurrent ? 'var(--accent)' : 'var(--muted)'};">${dateStr}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+}
+
+function loadGoalIntoSimulator(price, saved, extra, freq, amt, name) {
+  document.getElementById('sim-target').value = price;
+  document.getElementById('sim-saved').value = saved;
+  document.getElementById('sim-extra').value = extra;
+  document.getElementById('sim-amount').value = amt;
+  const pill = document.getElementById('sim-active-goal-name');
+  if (pill) pill.textContent = name;
+  setSimFrequency(freq || 'daily');
+  const simSec = document.getElementById('simulator-section');
+  if (simSec) simSec.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Deposit Modal Handlers
+function openDepositModal(id, name, remaining) {
+  const modal = document.getElementById('depositModal');
+  const title = document.getElementById('depositGoalName');
+  const form = document.getElementById('depositForm');
+  if (title) title.textContent = name;
+  if (form) form.action = '/achievements/' + id + '/add_savings';
+  if (modal) modal.classList.add('show');
+}
+function closeDepositModal() {
+  const modal = document.getElementById('depositModal');
+  if (modal) modal.classList.remove('show');
+}
+
+// Delete Modal Handlers
+function openDeleteGoalModal(id, name) {
+  const modal = document.getElementById('goalDeleteModal');
+  const title = document.getElementById('deleteGoalTitle');
+  const form = document.getElementById('deleteGoalForm');
+  if (title) title.textContent = name;
+  if (form) form.action = '/achievements/' + id + '/delete';
+  if (modal) modal.classList.add('show');
+}
+function closeDeleteGoalModal() {
+  const modal = document.getElementById('goalDeleteModal');
+  if (modal) modal.classList.remove('show');
+}
+
+// Init simulator on load
+document.addEventListener('DOMContentLoaded', runLiveSimulator);
+</script>
+{% endblock %}

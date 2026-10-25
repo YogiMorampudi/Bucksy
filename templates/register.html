@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create Account · Bucksy</title>
+  <meta name="description" content="Create your secure Bucksy personal finance account.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="auth-wrapper">
+    <div style="position: absolute; top: 20px; right: 20px;">
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle dark/light mode">◐</button>
+    </div>
+
+    <div class="auth-card">
+      <div class="auth-brand">
+        <a href="{{ url_for('login') }}" class="brand-mark" style="text-decoration:none;">₿</a>
+        <h2>Create Account</h2>
+        <p>Start tracking your personal wealth & savings</p>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack" style="margin-bottom: 20px;">
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <form method="post" action="{{ url_for('register') }}" class="auth-form" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label class="auth-label">
+          <span>Full Name <span class="req">*</span></span>
+          <input type="text" name="full_name" value="{{ full_name or '' }}" placeholder="e.g. Maya Sharma" required autofocus maxlength="80">
+        </label>
+
+        <label class="auth-label">
+          <span>Email Address <span class="req">*</span></span>
+          <input type="email" name="email" value="{{ email or '' }}" placeholder="name@example.com" required maxlength="120">
+        </label>
+
+        <label class="auth-label">
+          <span>Password <span class="req">*</span></span>
+          <div class="password-input-wrap">
+            <input type="password" name="password" id="register-password" placeholder="At least 8 characters" required minlength="8"
+                   oninput="updatePasswordStrength(this.value, 'register-strength-fill', 'register-strength-text')">
+            <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this, 'register-password')" title="Show or hide password">👁</button>
+          </div>
+          <div class="password-strength-bar">
+            <div class="password-strength-fill" id="register-strength-fill"></div>
+          </div>
+          <div class="password-strength-text" id="register-strength-text"></div>
+        </label>
+
+        <label class="auth-label">
+          <span>Confirm Password <span class="req">*</span></span>
+          <div class="password-input-wrap">
+            <input type="password" name="confirm_password" id="register-confirm" placeholder="Re-enter your password" required minlength="8">
+            <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this, 'register-confirm')" title="Show or hide password">👁</button>
+          </div>
+        </label>
+
+        <button type="submit" class="button primary full" style="padding: 13px 18px; font-size: 14px; margin-top: 6px;">
+          Create Account ➔
+        </button>
+      </form>
+
+      <div class="auth-footer-links">
+        Already have an account? <a href="{{ url_for('login') }}">Sign in here</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

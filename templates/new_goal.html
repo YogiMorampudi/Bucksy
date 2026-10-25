@@ -1,0 +1,544 @@
+{% extends "base.html" %}
+{% block title %}Create Goal · Achievement Calculator{% endblock %}
+{% block page_heading %}New Goal Planner{% endblock %}
+{% block content %}
+
+{# ── Top Navigation / Welcome Row ── #}
+<section class="welcome-row">
+  <div>
+    <h2>Plan Your Next Achievement 🎯</h2>
+    <p>Search verified live product prices or enter your custom goal to estimate your achievement date.</p>
+  </div>
+  <div class="welcome-actions">
+    <a class="button secondary" href="{{ url_for('achievements') }}">← Back to Goals</a>
+  </div>
+</section>
+
+<div class="two-col form-layout">
+  <div>
+    {# ── Product Price Lookup Section ── #}
+    <article class="panel" style="border-color: rgba(168,240,107,.25);">
+      <div class="panel-heading" style="margin-bottom:12px;">
+        <div>
+          <span class="eyebrow" style="color:var(--accent);">STEP 1 · PRODUCT PRICE LOOKUP</span>
+          <h3>Search Product or Enter Manually</h3>
+          <p>Retrieve verified market benchmarks, official retail MRP, or vehicle on-road prices</p>
+        </div>
+      </div>
+
+      <div class="search-form" style="position:relative; margin-bottom:12px;">
+        <input type="text" id="productSearchInput" placeholder="Search iPhone 17, Royal Enfield Hunter 350, Swift, MacBook Air..."
+               autocomplete="off" oninput="debounceProductSearch(this.value)">
+        <button type="button" class="button primary" onclick="executeProductSearch()">Search</button>
+      </div>
+
+      {# Quick suggestion pills #}
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">
+        <span style="font-size:11px; color:var(--muted2); align-self:center;">Try:</span>
+        <button type="button" class="preset-btn" onclick="quickSearch('Hunter 350')">🏍️ Hunter 350</button>
+        <button type="button" class="preset-btn" onclick="quickSearch('Swift')">🚗 Maruti Swift</button>
+        <button type="button" class="preset-btn" onclick="quickSearch('iPhone 17')">📱 iPhone 17</button>
+        <button type="button" class="preset-btn" onclick="quickSearch('MacBook Air')">💻 MacBook Air</button>
+        <button type="button" class="preset-btn" onclick="quickSearch('PlayStation 5')">🎮 PS5 Slim</button>
+        <button type="button" class="preset-btn" onclick="setManualMode()">✏️ Custom Goal</button>
+      </div>
+
+      {# Product Search Results Box #}
+      <div id="productResultsArea" style="display:none; margin-top:14px;">
+        <div id="productResultsHeader" style="font-size:12px; font-weight:700; color:var(--muted); margin-bottom:10px;"></div>
+        <div id="productResultsList" style="display:grid; gap:12px;"></div>
+      </div>
+
+      <div id="manualModeBanner" style="display:none; padding:12px 14px; background:var(--panel2); border-radius:10px; border:1px dashed var(--border); font-size:12.5px; color:var(--muted);">
+        ✏️ <strong>Manual Price Entry Mode Active:</strong> You can enter any custom target price and extra costs directly in the form below. Label will be set to <em>"User entered price"</em>.
+      </div>
+    </article>
+
+    {# ── Goal Creation Form ── #}
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow" style="color:var(--accent);">STEP 2 · GOAL PARAMETERS</span>
+          <h3>Goal Details & Savings Plan</h3>
+          <p>Fill in your saving capacity and optional target deadline</p>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('new_goal') }}" id="goalForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid">
+          <label class="full">
+            Goal Name *
+            <input type="text" name="goal_name" id="goal_name" placeholder="e.g. Royal Enfield Hunter 350 Rebel"
+                   value="{{ prefill.name }}" required oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Category
+            <select name="category" id="category" onchange="updateLivePreview()">
+              {% for c in categories %}
+                <option value="{{ c }}" {% if prefill.category == c or (not prefill.category and c == 'Smartphones') %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label>
+            Model / Variant Details
+            <input type="text" name="product_model" id="product_model" placeholder="e.g. Dapper Series / 256GB"
+                   value="{{ prefill.model }}" oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Target Price (₹) *
+            <input type="number" name="price" id="price" min="1" step="10" placeholder="80000"
+                   value="{{ prefill.price or '80000' }}" required oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Extra Costs (Insurance, RTO, Accessories) (₹)
+            <input type="number" name="extra_costs" id="extra_costs" min="0" step="10" placeholder="0"
+                   value="0" oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Current Amount Saved Toward Goal (₹)
+            <input type="number" name="current_savings" id="current_savings" min="0" step="10" placeholder="0"
+                   value="10000" oninput="updateLivePreview()">
+          </label>
+
+          <label>
+            Saving Frequency
+            <select name="saving_frequency" id="saving_frequency" onchange="onFrequencyChange()">
+              <option value="daily" selected>Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </label>
+
+          <label class="full">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span>Saving Contribution per period (₹) *</span>
+              <span id="freqLabelBadge" style="font-size:10px; color:var(--accent); font-weight:700;">DAILY</span>
+            </div>
+            <input type="number" name="saving_amount" id="saving_amount" min="1" step="5" placeholder="100"
+                   value="100" required oninput="updateLivePreview()">
+          </label>
+
+          {# Contribution Presets #}
+          <div class="full" style="margin-top:-6px; margin-bottom:6px;">
+            <div style="display:flex; gap:6px; flex-wrap:wrap;" id="presetButtonsWrap">
+              <button type="button" class="preset-btn" onclick="setSavingAmount(50)">₹50</button>
+              <button type="button" class="preset-btn active" onclick="setSavingAmount(100)">₹100</button>
+              <button type="button" class="preset-btn" onclick="setSavingAmount(250)">₹250</button>
+              <button type="button" class="preset-btn" onclick="setSavingAmount(500)">₹500</button>
+              <button type="button" class="preset-btn" onclick="setSavingAmount(1000)">₹1,000</button>
+            </div>
+          </div>
+
+          <label>
+            Optional Target Purchase Date
+            <input type="date" name="target_date" id="target_date" min="{{ today }}" onchange="updateLivePreview()">
+          </label>
+
+          <label>
+            Priority
+            <select name="priority" id="priority">
+              <option value="High">High Priority</option>
+              <option value="Medium" selected>Medium Priority</option>
+              <option value="Low">Low Priority</option>
+            </select>
+          </label>
+
+          <label class="full">
+            Price Source & Attribution
+            <input type="text" name="product_source" id="product_source" placeholder="User entered price"
+                   value="{{ prefill.source or 'User entered price' }}">
+          </label>
+
+          <input type="hidden" name="price_checked_at" id="price_checked_at" value="{{ today }}">
+          <input type="hidden" name="image_url" id="image_url" value="">
+
+          <label class="full">
+            Personal Notes & Planning
+            <textarea name="notes" id="notes" placeholder="e.g. Save from monthly freelance side-gig. Check festive discounts."></textarea>
+          </label>
+
+          <div class="full" style="margin-top:14px; display:flex; gap:10px;">
+            <button type="submit" class="button primary" style="flex:1;">Create Goal & Start Tracking</button>
+            <a class="button secondary" href="{{ url_for('achievements') }}">Cancel</a>
+          </div>
+        </div>
+      </form>
+    </article>
+  </div>
+
+  {# ── Live Preview Column ── #}
+  <div>
+    <article class="panel" style="position:sticky; top:20px; background:var(--panel2);">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow" style="color:var(--accent);">REAL-TIME PROJECTION</span>
+          <h3 id="prev-goal-title">Goal Projection Preview</h3>
+          <p id="prev-goal-source" style="font-size:11px; color:var(--muted2);">Source: User entered price</p>
+        </div>
+      </div>
+
+      {# Big Target & Remaining numbers #}
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+        <div class="sim-stat-box">
+          <small>Total Target Price</small>
+          <strong id="prev-total-target" style="color:var(--text);">₹80,000</strong>
+          <span id="prev-extra-breakdown" style="font-size:10px; color:var(--muted2); display:block; margin-top:2px;"></span>
+        </div>
+        <div class="sim-stat-box">
+          <small>Remaining to Save</small>
+          <strong id="prev-remaining" class="red-text">₹70,000</strong>
+          <span id="prev-saved-note" style="font-size:10px; color:var(--muted2); display:block; margin-top:2px;">₹10,000 already saved</span>
+        </div>
+      </div>
+
+      {# Progress Bar #}
+      <div class="savings-bar-wrap" style="margin-bottom:18px;">
+        <div class="savings-label">
+          <span>Target Progress</span>
+          <strong id="prev-pct" style="color:var(--accent);">12.5%</strong>
+        </div>
+        <div class="savings-bar" style="height:10px;">
+          <div class="savings-bar-fill" id="prev-bar" style="width:12.5%;"></div>
+        </div>
+      </div>
+
+      {# Completion Metrics #}
+      <div class="sim-stat-box" style="margin-bottom:16px;">
+        <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; margin-bottom:6px;">Estimated Achievement Date</div>
+        <div id="prev-est-date" class="green-text" style="font:700 24px 'Space Grotesk',sans-serif; letter-spacing:-0.5px;">—</div>
+        <div id="prev-days-count" style="font-size:12px; color:var(--muted); margin-top:4px;">Calculating...</div>
+      </div>
+
+      {# Target Date comparison check #}
+      <div id="prev-target-date-check" style="display:none; padding:10px 14px; border-radius:10px; margin-bottom:16px; font-size:12px;"></div>
+
+      {# Pace Comparison #}
+      <div style="padding:14px; background:var(--panel); border:1px solid var(--border); border-radius:12px; margin-bottom:16px;">
+        <div style="font-size:10.5px; font-weight:700; color:var(--muted2); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Alternative Saving Paces</div>
+        <div style="display:grid; gap:8px; font-size:12px;">
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:var(--muted)">Daily plan:</span>
+            <strong id="prev-alt-daily">₹100/day</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:var(--muted)">Weekly pace:</span>
+            <strong id="prev-alt-weekly">₹700/week</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:var(--muted)">Monthly pace:</span>
+            <strong id="prev-alt-monthly">₹3,000/month</strong>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:11.5px; color:var(--muted2); line-height:1.5;">
+        ℹ️ Estimates use exact calendar month and leap-year arithmetic based on current local date. Consistent saving is assumed.
+      </div>
+    </article>
+  </div>
+</div>
+
+<script>
+let searchDebounceTimeout = null;
+
+function debounceProductSearch(val) {
+  clearTimeout(searchDebounceTimeout);
+  if (!val || val.trim().length < 2) {
+    document.getElementById('productResultsArea').style.display = 'none';
+    return;
+  }
+  searchDebounceTimeout = setTimeout(() => {
+    executeProductSearch();
+  }, 350);
+}
+
+function quickSearch(term) {
+  document.getElementById('productSearchInput').value = term;
+  executeProductSearch();
+}
+
+function setManualMode() {
+  document.getElementById('productSearchInput').value = '';
+  document.getElementById('productResultsArea').style.display = 'none';
+  document.getElementById('manualModeBanner').style.display = 'block';
+  document.getElementById('product_source').value = 'User entered price';
+  document.getElementById('price_checked_at').value = new Date().toISOString();
+  document.getElementById('goal_name').focus();
+  updateLivePreview();
+}
+
+function formatINR(val) {
+  const n = Math.round(Number(val) || 0);
+  return '₹' + n.toLocaleString('en-IN');
+}
+
+function executeProductSearch() {
+  const q = document.getElementById('productSearchInput').value.trim();
+  if (!q) return;
+
+  const resultsArea = document.getElementById('productResultsArea');
+  const resultsHeader = document.getElementById('productResultsHeader');
+  const resultsList = document.getElementById('productResultsList');
+  const manualBanner = document.getElementById('manualModeBanner');
+
+  manualBanner.style.display = 'none';
+  resultsArea.style.display = 'block';
+  resultsHeader.innerHTML = 'Searching verified sources...';
+  resultsList.innerHTML = '<div style="color:var(--muted); font-size:12px; padding:10px 0;">Loading live price catalog...</div>';
+
+  fetch('/api/product-search?q=' + encodeURIComponent(q))
+    .then(res => res.json())
+    .then(data => {
+      if (!data.results || data.results.length === 0) {
+        resultsHeader.innerHTML = `⚠️ No live match found for "${q}".`;
+        resultsList.innerHTML = `
+          <div style="padding:14px; background:var(--panel2); border-radius:10px; border:1px dashed var(--border); font-size:12px; color:var(--muted);">
+            ${data.message || 'Live price retrieval unavailable. You can enter or edit the target price manually below.'}
+            <div style="margin-top:10px;">
+              <button type="button" class="button primary sm" onclick="setManualMode()">Enter Target Price Manually</button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      resultsHeader.innerHTML = `✓ Found ${data.results.length} result(s). Select variant:`;
+      resultsList.innerHTML = data.results.map(prod => {
+        return `
+          <div class="product-result-card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <div>
+                <strong style="font-size:14px; color:var(--text);">${prod.image || '🏷️'} ${prod.name}</strong>
+                <div style="font-size:11px; color:var(--muted2); margin-top:2px;">
+                  Source: <strong>${prod.source}</strong> · Checked: ${prod.price_checked_at.slice(0,10)}
+                </div>
+              </div>
+              <span class="cat-badge">${prod.category}</span>
+            </div>
+
+            <div style="display:grid; gap:8px; margin-top:10px;">
+              ${prod.variants.map((v, vIdx) => {
+                const hasOnRoad = v.on_road_price && v.on_road_price > 0;
+                return `
+                  <div class="variant-item-box" style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:var(--panel); border:1px solid var(--border); border-radius:8px; gap:10px;">
+                    <div style="flex:1;">
+                      <div style="font-weight:600; font-size:12.5px; color:var(--text);">${v.model}</div>
+                      <div style="font-size:11px; color:var(--muted);">${v.details || ''}</div>
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-weight:700; font-size:14px; color:var(--accent);">${formatINR(v.price)}</div>
+                      ${hasOnRoad ? `<div style="font-size:10.5px; color:var(--muted);">On-Road: <strong>${formatINR(v.on_road_price)}</strong></div>` : ''}
+                    </div>
+                    <div style="display:flex; gap:4px; flex-shrink:0;">
+                      <button type="button" class="button primary sm"
+                        onclick="selectProductVariant('${escapeHtml(prod.name)}', '${escapeHtml(v.model)}', ${v.price}, '${escapeHtml(prod.category)}', '${escapeHtml(prod.source)}', '${prod.price_checked_at}', 0)">
+                        ${hasOnRoad ? 'Ex-Showroom' : 'Select'}
+                      </button>
+                      ${hasOnRoad ? `
+                        <button type="button" class="button secondary sm" style="background:rgba(168,240,107,.15); color:var(--green); border-color:rgba(168,240,107,.3);"
+                          onclick="selectProductVariant('${escapeHtml(prod.name)}', '${escapeHtml(v.model)} (On-Road)', ${v.on_road_price}, '${escapeHtml(prod.category)}', '${escapeHtml(prod.source + ' [On-Road Delhi]')}', '${prod.price_checked_at}', 0)">
+                          On-Road
+                        </button>
+                      ` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    })
+    .catch(err => {
+      resultsHeader.innerHTML = '⚠️ Error contacting price service';
+      resultsList.innerHTML = `
+        <div style="padding:10px; color:var(--red); font-size:12px;">
+          Network error or price service rate limit. You can proceed with manual entry below.
+        </div>
+      `;
+    });
+}
+
+function escapeHtml(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function selectProductVariant(name, model, price, category, source, checkedAt, extra) {
+  document.getElementById('goal_name').value = name + (model ? ' · ' + model : '');
+  document.getElementById('product_model').value = model;
+  document.getElementById('price').value = price;
+  document.getElementById('product_source').value = source;
+  document.getElementById('price_checked_at').value = checkedAt;
+  
+  // Set category dropdown if matching
+  const catSelect = document.getElementById('category');
+  for (let i = 0; i < catSelect.options.length; i++) {
+    if (catSelect.options[i].value.toLowerCase().includes(category.toLowerCase()) ||
+        category.toLowerCase().includes(catSelect.options[i].value.toLowerCase())) {
+      catSelect.selectedIndex = i;
+      break;
+    }
+  }
+
+  document.getElementById('productResultsArea').style.display = 'none';
+  document.getElementById('productSearchInput').value = name;
+  updateLivePreview();
+}
+
+function onFrequencyChange() {
+  const freq = document.getElementById('saving_frequency').value;
+  const badge = document.getElementById('freqLabelBadge');
+  const wrap = document.getElementById('presetButtonsWrap');
+  badge.textContent = freq.toUpperCase();
+
+  if (freq === 'daily') {
+    wrap.innerHTML = `
+      <button type="button" class="preset-btn" onclick="setSavingAmount(50)">₹50</button>
+      <button type="button" class="preset-btn active" onclick="setSavingAmount(100)">₹100</button>
+      <button type="button" class="preset-btn" onclick="setSavingAmount(250)">₹250</button>
+      <button type="button" class="preset-btn" onclick="setSavingAmount(500)">₹500</button>
+      <button type="button" class="preset-btn" onclick="setSavingAmount(1000)">₹1,000</button>
+    `;
+    document.getElementById('saving_amount').value = 100;
+  } else if (freq === 'weekly') {
+    wrap.innerHTML = `
+      <button type="button" class="preset-btn" onclick="setSavingAmount(350)">₹350</button>
+      <button type="button" class="preset-btn active" onclick="setSavingAmount(700)">₹700</button>
+      <button type="button" class="preset-btn" onclick="setSavingAmount(1500)">₹1,500</button>
+      <button type="button" class="preset-btn" onclick="setSavingAmount(3000)">₹3,000</button>
+      <button type="button" class="preset-btn" onclick="setSavingAmount(5000)">₹5,000</button>
+    `;
+    document.getElementById('saving_amount').value = 700;
+  } else if (freq === 'monthly') {
+    wrap.innerHTML = `
+      <button type="button" class="preset-btn" onclick="setSavingAmount(1500)">₹1,500</button>
+      <button type="button" class="preset-btn active" onclick="setSavingAmount(3000)">₹3,000</button>
+      <button type="button" class="preset-btn" onclick="setSavingAmount(5000)">₹5,000</button>
+      <button type="button" class="preset-btn" onclick="setSavingAmount(10000)">₹10,000</button>
+      <button type="button" class="preset-btn" onclick="setSavingAmount(25000)">₹25,000</button>
+    `;
+    document.getElementById('saving_amount').value = 3000;
+  }
+  updateLivePreview();
+}
+
+function setSavingAmount(amt) {
+  document.getElementById('saving_amount').value = amt;
+  document.querySelectorAll('#presetButtonsWrap .preset-btn').forEach(b => b.classList.remove('active'));
+  if (event && event.target) event.target.classList.add('active');
+  updateLivePreview();
+}
+
+function addCalendarMonthsJS(d, months) {
+  if (months <= 0) return new Date(d);
+  const target = new Date(d);
+  const curDay = target.getDate();
+  target.setDate(1);
+  target.setMonth(target.getMonth() + months);
+  const maxDays = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(curDay, maxDays));
+  return target;
+}
+
+function updateLivePreview() {
+  const name = document.getElementById('goal_name').value.trim() || 'Goal Projection Preview';
+  const source = document.getElementById('product_source').value.trim() || 'User entered price';
+  const price = parseFloat(document.getElementById('price').value) || 0;
+  const extra = parseFloat(document.getElementById('extra_costs').value) || 0;
+  const saved = parseFloat(document.getElementById('current_savings').value) || 0;
+  const amount = parseFloat(document.getElementById('saving_amount').value) || 0;
+  const freq = document.getElementById('saving_frequency').value;
+  const targetDateVal = document.getElementById('target_date').value;
+
+  const totalTarget = price + extra;
+  const remaining = Math.max(0, totalTarget - saved);
+
+  document.getElementById('prev-goal-title').textContent = name;
+  document.getElementById('prev-goal-source').textContent = 'Source: ' + source;
+  document.getElementById('prev-total-target').textContent = formatINR(totalTarget);
+  document.getElementById('prev-extra-breakdown').textContent = extra > 0 ? `(Price ${formatINR(price)} + Extras ${formatINR(extra)})` : '';
+  
+  const remEl = document.getElementById('prev-remaining');
+  remEl.textContent = formatINR(remaining);
+  remEl.className = remaining === 0 ? 'green-text' : 'red-text';
+  document.getElementById('prev-saved-note').textContent = formatINR(saved) + ' saved so far';
+
+  const pct = totalTarget > 0 ? Math.min(100, Math.max(0, (saved / totalTarget) * 100)) : 100;
+  document.getElementById('prev-pct').textContent = pct.toFixed(1) + '%';
+  document.getElementById('prev-bar').style.width = pct + '%';
+
+  const today = new Date();
+  let daysRequired = 0;
+  let estDate = new Date();
+
+  if (remaining <= 0) {
+    document.getElementById('prev-est-date').textContent = 'Goal achieved! 🎉';
+    document.getElementById('prev-days-count').textContent = 'You already have enough saved to afford this!';
+  } else if (amount <= 0) {
+    document.getElementById('prev-est-date').textContent = '—';
+    document.getElementById('prev-days-count').textContent = 'Enter contribution amount > ₹0';
+  } else {
+    if (freq === 'daily') {
+      daysRequired = Math.ceil(remaining / amount);
+      estDate = new Date(today);
+      estDate.setDate(estDate.getDate() + daysRequired);
+    } else if (freq === 'weekly') {
+      const weeksRequired = Math.ceil(remaining / amount);
+      daysRequired = weeksRequired * 7;
+      estDate = new Date(today);
+      estDate.setDate(estDate.getDate() + daysRequired);
+    } else if (freq === 'monthly') {
+      const monthsRequired = Math.ceil(remaining / amount);
+      estDate = addCalendarMonthsJS(today, monthsRequired);
+      const diffTime = Math.abs(estDate - today);
+      daysRequired = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    const approxMonths = Math.ceil(daysRequired / 30.4375);
+    const dateFormatted = estDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    document.getElementById('prev-est-date').textContent = dateFormatted;
+    document.getElementById('prev-days-count').textContent = `In ${daysRequired.toLocaleString()} days (approx ${approxMonths} month${approxMonths !== 1 ? 's' : ''})`;
+
+    // Check against target purchase date
+    const checkEl = document.getElementById('prev-target-date-check');
+    if (targetDateVal) {
+      checkEl.style.display = 'block';
+      const targetD = new Date(targetDateVal);
+      if (estDate <= targetD) {
+        checkEl.style.background = 'rgba(168,240,107,.12)';
+        checkEl.style.color = 'var(--green)';
+        checkEl.style.border = '1px solid rgba(168,240,107,.3)';
+        checkEl.innerHTML = `✓ <strong>On Track:</strong> You will achieve this before your target date of ${targetD.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}!`;
+      } else {
+        const daysLag = Math.ceil((estDate - targetD) / (1000 * 60 * 60 * 24));
+        checkEl.style.background = 'rgba(255,123,131,.12)';
+        checkEl.style.color = 'var(--red)';
+        checkEl.style.border = '1px solid rgba(255,123,131,.3)';
+        checkEl.innerHTML = `⚠️ <strong>Pace Alert:</strong> At this rate, you'll reach your goal ${daysLag} days after your target date. Increase your contribution to catch up.`;
+      }
+    } else {
+      checkEl.style.display = 'none';
+    }
+  }
+
+  // Equivalent paces
+  if (remaining > 0 && amount > 0) {
+    let dailyPace = (freq === 'daily') ? amount : (freq === 'weekly') ? amount / 7 : amount / 30.4375;
+    document.getElementById('prev-alt-daily').textContent = formatINR(dailyPace) + '/day';
+    document.getElementById('prev-alt-weekly').textContent = formatINR(dailyPace * 7) + '/week';
+    document.getElementById('prev-alt-monthly').textContent = formatINR(dailyPace * 30.4375) + '/month';
+  }
+}
+
+// Initial calculation on page load
+document.addEventListener('DOMContentLoaded', () => {
+  updateLivePreview();
+});
+</script>
+{% endblock %}

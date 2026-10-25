@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Khata Book{% endblock %}
+{% block page_heading %}Khata Book{% endblock %}
+{% block content %}
+
+<section class="welcome-row">
+  <div>
+    <h2>Your people. Your records.</h2>
+    <p>Track money given, received, borrowed and repaid — separately from your regular expenses.</p>
+  </div>
+</section>
+
+<div class="two-col form-layout">
+  {# ── Add Person ── #}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Add a Person</h3>
+        <p>Create a separate ledger for them</p>
+      </div>
+      <span class="stat-icon purple">♙</span>
+    </div>
+    <form method="post" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="person">
+      <label class="full">
+        Full name
+        <input name="name" placeholder="e.g. Ravi Kumar" required maxlength="100">
+      </label>
+      <label class="full">
+        Phone (optional)
+        <input name="phone" placeholder="Contact number" type="tel">
+      </label>
+      <label class="full">
+        Notes
+        <input name="notes" placeholder="Optional notes">
+      </label>
+      <button class="button primary full" type="submit">＋ Add person</button>
+    </form>
+  </section>
+
+  {# ── Record Khata Entry ── #}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Record a Khata Entry</h3>
+        <p>Choose the direction carefully</p>
+      </div>
+      <span class="stat-icon blue">⇄</span>
+    </div>
+    {% if people %}
+    <form method="post" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="entry">
+      <label class="full">
+        Person
+        <select name="person_id" required>
+          {% for p in people %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="full">
+        Entry type
+        <select name="direction">
+          <option value="given">💸 I gave money (lent)</option>
+          <option value="received">✅ They returned money</option>
+          <option value="borrowed">🤝 I borrowed money</option>
+          <option value="repaid">✔ I repaid money</option>
+        </select>
+      </label>
+      <label>
+        Amount (₹)
+        <input type="number" name="amount" min="0.01" step="0.01" placeholder="0.00" required>
+      </label>
+      <label>
+        Date
+        <input type="date" name="entry_date" value="{{ today }}" required>
+      </label>
+      <label class="full">
+        Note
+        <input name="note" placeholder="Optional — e.g. for groceries, rent">
+      </label>
+      <button class="button primary full" type="submit">Save Khata Entry</button>
+    </form>
+    {% else %}
+    <div class="empty-inline">Add a person first to start recording Khata entries.</div>
+    {% endif %}
+  </section>
+</div>
+
+{# ── People & Balances ── #}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h3>People & Balances</h3>
+      <p>Open a person to see their full ledger</p>
+    </div>
+    <span class="count-pill">{{ summaries|length }} people</span>
+  </div>
+
+  {% if summaries %}
+  <div class="people-grid">
+    {% for p in summaries %}
+    <a class="person-card" href="{{ url_for('person_detail', person_id=p.id) }}">
+      <div class="person-top">
+        <div class="avatar avatar-lg">{{ p.name[0]|upper }}</div>
+        <span class="chevron">→</span>
+      </div>
+      <h3>{{ p.name }}</h3>
+      <p>{{ p.phone or 'Personal ledger' }}</p>
+      <div class="person-balances">
+        <div>
+          <small>To Collect</small>
+          <strong class="{{ 'green-text' if p.receivable > 0 else 'muted-text' }}">{{ p.receivable|inr }}</strong>
+        </div>
+        <div>
+          <small>To Return</small>
+          <strong class="{{ 'red-text' if p.payable > 0 else 'muted-text' }}">{{ p.payable|inr }}</strong>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">♙</div>
+    <h3>Your Khata Book is empty</h3>
+    <p>Add a person above to start tracking money given or borrowed.</p>
+  </div>
+  {% endif %}
+</section>
+
+{# ── Recent Khata Activity ── #}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h3>Recent Khata Activity</h3>
+      <p>Latest entries across all people</p>
+    </div>
+  </div>
+
+  {% if entries %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Person</th>
+          <th>Entry type</th>
+          <th>Date</th>
+          <th>Note</th>
+          <th style="text-align:right;">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+        {% set dir_map = {
+          'given':    ('💸 Gave money',       'given'),
+          'received': ('✅ Received back',     'received'),
+          'borrowed': ('🤝 Borrowed',          'borrowed'),
+          'repaid':   ('✔ Repaid',            'repaid')
+        } %}
+        <tr>
+          <td>
+            <a class="person-link" href="{{ url_for('person_detail', person_id=e.person_id) }}">{{ e.name }}</a>
+          </td>
+          <td>
+            {% set info = dir_map[e.direction] %}
+            <span class="dir-label {{ info[1] }}">{{ info[0] }}</span>
+          </td>
+          <td style="font-size:12px;font-variant-numeric:tabular-nums;">{{ e.entry_date }}</td>
+          <td style="font-size:12px;color:var(--muted);">{{ e.note or '—' }}</td>
+          <td class="amount {{ 'income' if e.direction in ['received','borrowed'] else 'expense' }}">
+            {{ '+' if e.direction in ['given','borrowed'] else '−' }}{{ e.amount|inr }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-inline">No Khata entries yet. Add a person and record your first entry.</div>
+  {% endif %}
+</section>
+{% endblock %}

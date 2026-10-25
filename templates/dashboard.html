@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block page_heading %}Financial Overview{% endblock %}
+{% block content %}
+
+{# ── Welcome Row ── #}
+<section class="welcome-row">
+  <div>
+    <h2>Welcome back 👋</h2>
+    <p>Here's your complete financial snapshot — all figures are from your recorded data.</p>
+  </div>
+  <div class="welcome-actions">
+    <a class="button primary" href="{{ url_for('transactions') }}">＋ Add Transaction</a>
+    <a class="button secondary" href="{{ url_for('khata') }}">▤ Khata Book</a>
+  </div>
+</section>
+
+{# ── Month Filter ── #}
+{% if months_avail %}
+<div class="month-tabs">
+  <a href="{{ url_for('dashboard') }}" class="month-tab {% if not month_filter %}active{% endif %}">All Time</a>
+  {% for m in months_avail %}
+    <a href="{{ url_for('dashboard', month=m) }}" class="month-tab {% if month_filter == m %}active{% endif %}">
+      {{ m }}
+    </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── Stats Grid ── #}
+<section class="stats-grid">
+  <article class="stat-card balance-card">
+    <div class="stat-top">
+      <span>Available Balance*</span>
+      <span class="stat-icon green">◈</span>
+    </div>
+    <div class="stat-value">{{ balance|inr }}</div>
+    <div class="stat-foot">Income − expenses − net khata activity</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top">
+      <span>{{ 'Month Income' if month_filter else 'Total Income' }}</span>
+      <span class="stat-icon green">↗</span>
+    </div>
+    <div class="stat-value">{{ m_income|inr }}</div>
+    <div class="stat-foot">All recorded income{{ ' for ' + month_filter if month_filter else '' }}</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top">
+      <span>{{ 'Month Expenses' if month_filter else 'Total Expenses' }}</span>
+      <span class="stat-icon red">↘</span>
+    </div>
+    <div class="stat-value">{{ m_expenses|inr }}</div>
+    <div class="stat-foot">All recorded spending{{ ' for ' + month_filter if month_filter else '' }}</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top">
+      <span>People in Khata</span>
+      <span class="stat-icon purple">♙</span>
+    </div>
+    <div class="stat-value">{{ people_count }}</div>
+    <div class="stat-foot"><a href="{{ url_for('khata') }}">Manage your ledger →</a></div>
+  </article>
+</section>
+
+{# ── Savings + Khata Summary ── #}
+<div class="two-col">
+  <article class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Savings Rate</h3>
+        <p>How much you saved vs earned{{ ' this month' if month_filter else '' }}</p>
+      </div>
+      <span class="stat-icon {% if savings_rate >= 20 %}green{% elif savings_rate > 0 %}amber{% else %}red{% endif %}">
+        {{ '↑' if savings_rate > 0 else '↓' }}
+      </span>
+    </div>
+    <div class="savings-bar-wrap">
+      <div class="savings-label">
+        <span>{{ savings_rate }}% saved</span>
+        <span>{{ m_income|inr }} earned</span>
+      </div>
+      <div class="savings-bar">
+        <div class="savings-bar-fill {% if savings_rate < 0 %}negative{% endif %}"
+             style="width: {{ [savings_rate, 100]|min|int }}%"></div>
+      </div>
+    </div>
+    <div style="margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div>
+        <small style="font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px;">Net Saved</small>
+        <strong class="{% if m_income - m_expenses >= 0 %}green-text{% else %}red-text{% endif %}"
+                style="font:600 18px 'Space Grotesk',sans-serif;letter-spacing:-0.5px;">
+          {{ (m_income - m_expenses)|inr }}
+        </strong>
+      </div>
+      <div>
+        <small style="font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px;">Expense Ratio</small>
+        <strong style="font:600 18px 'Space Grotesk',sans-serif;letter-spacing:-0.5px;color:var(--text)">
+          {% if m_income > 0 %}{{ (m_expenses / m_income * 100)|round(1) }}%{% else %}—{% endif %}
+        </strong>
+      </div>
+    </div>
+  </article>
+
+  <article class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Khata Summary</h3>
+        <p>Outstanding balances with your contacts</p>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+      <div style="text-align:center; padding:16px; background:var(--green-bg); border-radius:12px; border:1px solid rgba(168,240,107,.15);">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.7px;">To Collect</div>
+        <div class="green-text" style="font:700 20px 'Space Grotesk',sans-serif;letter-spacing:-0.5px;">{{ receivable|inr }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;">People owe you</div>
+      </div>
+      <div style="text-align:center; padding:16px; background:var(--red-bg); border-radius:12px; border:1px solid rgba(255,123,131,.15);">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.7px;">To Return</div>
+        <div class="red-text" style="font:700 20px 'Space Grotesk',sans-serif;letter-spacing:-0.5px;">{{ payable|inr }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;">You owe others</div>
+      </div>
+    </div>
+    <a class="text-link" href="{{ url_for('khata') }}" style="display:inline-block;margin-top:16px;font-size:12.5px;">View full Khata Book →</a>
+  </article>
+</div>
+
+{# ── Charts Row ── #}
+<div class="two-col">
+  <article class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Income vs Expenses</h3>
+        <p>Monthly trend — last {{ monthly_data|length }} months</p>
+      </div>
+    </div>
+    {% if monthly_data %}
+    <div class="chart-wrap" style="height:220px;">
+      <canvas id="barChart"></canvas>
+    </div>
+    {% else %}
+    <div class="chart-placeholder">
+      <span>📊</span>
+      <div>No transaction data yet</div>
+    </div>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Expenses by Category</h3>
+        <p>Breakdown of your spending</p>
+      </div>
+    </div>
+    {% if category_rows %}
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+      <div class="chart-wrap" style="width:160px;height:160px;flex-shrink:0;">
+        <canvas id="doughnutChart"></canvas>
+      </div>
+      <div style="flex:1;min-width:120px;display:grid;gap:6px;">
+        {% for row in category_rows %}
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <span class="cat-dot" data-idx="{{ loop.index0 }}"
+                  style="width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--muted2);flex-shrink:0;"></span>
+            <span style="font-size:12px;color:var(--muted)">{{ row.category }}</span>
+          </div>
+          <strong style="font:600 12px 'Space Grotesk',sans-serif;color:var(--text);">{{ row.total|inr }}</strong>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="chart-placeholder">
+      <span>🥧</span>
+      <div>No expense records yet</div>
+    </div>
+    {% endif %}
+  </article>
+</div>
+
+{# ── Recent Transactions ── #}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h3>Recent Transactions</h3>
+      <p>{{ recent|length }} latest recorded {% if month_filter %}for {{ month_filter }}{% else %}entries{% endif %}</p>
+    </div>
+    <div class="panel-actions">
+      <a class="button secondary sm" href="{{ url_for('transactions') }}">View all →</a>
+    </div>
+  </div>
+
+  {% if recent %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Transaction</th>
+          <th>Category</th>
+          <th>Method</th>
+          <th>Date</th>
+          <th style="text-align:right;">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in recent %}
+        <tr>
+          <td>
+            <div class="transaction-name">
+              <span class="txn-dot {{ t.kind }}"></span>
+              <strong>{{ t.title }}</strong>
+            </div>
+          </td>
+          <td><span class="cat-badge">{{ t.category }}</span></td>
+          <td><span class="method-badge">{{ t.method }}</span></td>
+          <td style="font-variant-numeric:tabular-nums;font-size:12px;">{{ t.txn_date }}</td>
+          <td class="amount {{ t.kind }}">{{ '+' if t.kind == 'income' else '−' }}{{ t.amount|inr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">↗</div>
+    <h3>Your story starts here</h3>
+    <p>Add your first income or expense to start tracking.</p>
+    <a class="button primary" href="{{ url_for('transactions') }}">Add first transaction</a>
+  </div>
+  {% endif %}
+</section>
+
+<p class="footnote">* Starting balance assumed ₹0. Khata entries (lent/borrowed) are tracked separately and do not appear as income or expense.</p>
+
+{# ── Chart.js Data ── #}
+{% if monthly_data or category_rows %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const isDark = () => !document.body.classList.contains('light-mode');
+  const gridColor = () => isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)';
+  const textColor = () => isDark() ? '#8490a8' : '#5c6b85';
+
+  Chart.defaults.font.family = "'DM Sans', sans-serif";
+
+  {% if monthly_data %}
+  const barCtx = document.getElementById('barChart');
+  if (barCtx) {
+    const barChart = new Chart(barCtx, {
+      type: 'bar',
+      data: {
+        labels: {{ monthly_data|map(attribute='month')|list|tojson }},
+        datasets: [
+          {
+            label: 'Income',
+            data: {{ monthly_data|map(attribute='income')|list|tojson }},
+            backgroundColor: 'rgba(168,240,107,0.75)',
+            borderRadius: 6,
+            borderSkipped: false,
+          },
+          {
+            label: 'Expenses',
+            data: {{ monthly_data|map(attribute='expenses')|list|tojson }},
+            backgroundColor: 'rgba(255,123,131,0.7)',
+            borderRadius: 6,
+            borderSkipped: false,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: textColor(), font: { size: 12, weight: 600 }, boxWidth: 12, padding: 16 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' \u20b9' + ctx.raw.toLocaleString('en-IN', {maximumFractionDigits: 0})
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: gridColor() }, ticks: { color: textColor() } },
+          y: {
+            grid: { color: gridColor() },
+            ticks: {
+              color: textColor(),
+              callback: v => '\u20b9' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v)
+            }
+          }
+        }
+      }
+    });
+
+    // Re-theme on toggle
+    document.getElementById('themeToggle')?.addEventListener('click', () => {
+      setTimeout(() => {
+        barChart.options.scales.x.grid.color = gridColor();
+        barChart.options.scales.y.grid.color = gridColor();
+        barChart.options.scales.x.ticks.color = textColor();
+        barChart.options.scales.y.ticks.color = textColor();
+        barChart.options.plugins.legend.labels.color = textColor();
+        barChart.update();
+      }, 50);
+    });
+  }
+  {% endif %}
+
+  {% if category_rows %}
+  const PALETTE = [
+    '#a8f06b','#ff7b83','#b8a4ff','#5ba7ff','#fbbf24','#34d399','#fb923c','#e879f9'
+  ];
+  const catCtx = document.getElementById('doughnutChart');
+  if (catCtx) {
+    new Chart(catCtx, {
+      type: 'doughnut',
+      data: {
+        labels: {{ category_rows|map(attribute='category')|list|tojson }},
+        datasets: [{
+          data: {{ category_rows|map(attribute='total')|list|tojson }},
+          backgroundColor: PALETTE,
+          borderWidth: 2,
+          borderColor: isDark() ? '#0f1421' : '#ffffff',
+          hoverOffset: 6,
+        }]
+      },
+      options: {
+        cutout: '68%',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' \u20b9' + ctx.raw.toLocaleString('en-IN', {maximumFractionDigits: 0})
+            }
+          }
+        }
+      }
+    });
+
+    // Colour legend dots
+    document.querySelectorAll('.cat-dot').forEach((dot, i) => {
+      dot.style.background = PALETTE[i] || '#8490a8';
+    });
+  }
+  {% endif %}
+})();
+</script>
+{% endif %}
+{% endblock %}
