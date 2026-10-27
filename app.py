@@ -177,6 +177,9 @@ def register():
                 VALUES (?, ?, ?, ?, ?)
             """, (full_name, email, pw_hash, now, now))
             new_user_id = cur.lastrowid
+            if not new_user_id:
+                u = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+                new_user_id = u["id"] if u else None
 
         # Rotate session and log in immediately
         session.clear()
@@ -1011,6 +1014,8 @@ def api_calculate_savings():
         current_savings=current_savings,
         extra_costs=extra_costs
     )
+    return jsonify({"plan": plan, "scenarios": scenarios})
+
 @app.route("/health")
 def health_check():
     import db_adapter

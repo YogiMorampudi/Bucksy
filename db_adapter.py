@@ -57,7 +57,18 @@ def _rewrite_placeholders(sql):
 # PostgreSQL Wrapper
 # ══════════════════════════════════════════════════════════════════════════════
 class _PgRow(dict):
-    """Dict subclass that also supports attribute-style access, like sqlite3.Row."""
+    """Dict subclass that supports attribute access, key access, and integer indexing, like sqlite3.Row."""
+    def __init__(self, cols_and_vals):
+        pairs = list(cols_and_vals)
+        super().__init__(pairs)
+        self._values = [v for _, v in pairs]
+        self._keys = [k for k, _ in pairs]
+
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return self._values[item]
+        return super().__getitem__(item)
+
     def __getattr__(self, name):
         try:
             return self[name]
@@ -65,7 +76,8 @@ class _PgRow(dict):
             raise AttributeError(name)
 
     def keys(self):
-        return list(super().keys())
+        return list(self._keys)
+
 
 
 class _PgCursorWrapper:
