@@ -1014,7 +1014,12 @@ def api_calculate_savings():
     return jsonify({"plan": plan, "scenarios": scenarios})
 
 # ── Database Initialisation (runs on import for Vercel, and on __main__ for local)
-init_db()
+try:
+    init_db()
+except Exception as e:
+    import logging
+    logging.exception("Top-level init_db encountered an issue: %s", e)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
+

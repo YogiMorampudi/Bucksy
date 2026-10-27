@@ -156,9 +156,17 @@ class _PgConnectionWrapper:
 def db():
     """Return a database connection (SQLite or PostgreSQL)."""
     if USE_POSTGRES:
-        import psycopg2
-        conn = psycopg2.connect(DATABASE_URL)
-        return _PgConnectionWrapper(conn)
+        try:
+            import psycopg2
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
+            return _PgConnectionWrapper(conn)
+        except Exception as e:
+            import logging
+            logging.error("Failed to connect to PostgreSQL: %s. Using SQLite fallback.", e)
+            conn = sqlite3.connect(str(DB_PATH), timeout=15)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            return conn
     else:
         conn = sqlite3.connect(str(DB_PATH), timeout=15)
         conn.row_factory = sqlite3.Row
@@ -360,26 +368,38 @@ def _sqlite_column_exists(conn, table, column):
 
 def init_db():
     """Create all tables, run migrations, and create indexes."""
-    with db() as conn:
-        if USE_POSTGRES:
-            conn.executescript(_POSTGRES_SCHEMA)
+    try:
+        with db() as conn:
+            if USE_POSTGRES:
+                try:
+                    conn.executescript(_POSTGRES_SCHEMA)
+                except Exception as e:
+                    import logging
+                    logging.error("Failed to execute postgres schema: %s", e)
 
-            # Migration: add user_id if missing
-            for table in ("transactions", "people", "khata_entries", "goals"):
-                if not _pg_column_exists(conn, table, "user_id"):
-                    conn.execute(
-                        f"ALTER TABLE {table} ADD COLUMN user_id INTEGER REFERENCES users(id)"
-                    )
-        else:
-            conn.executescript(_SQLITE_SCHEMA)
+                for table in ("transactions", "people", "khata_entries", "goals"):
+                    try:
+                        conn.execute(
+                            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)"
+                        )
+                    except Exception:
+                        pass
+            else:
+                conn.executescript(_SQLITE_SCHEMA)
 
-            # Migration: add user_id if missing
-            for table in ("transactions", "people", "khata_entries", "goals"):
-                if not _sqlite_column_exists(conn, table, "user_id"):
-                    conn.execute(
-                        f"ALTER TABLE {table} ADD COLUMN user_id INTEGER REFERENCES users(id)"
-                    )
+                # Migration: add user_id if missing
+                for table in ("transactions", "people", "khata_entries", "goals"):
+                    if not _sqlite_column_exists(conn, table, "user_id"):
+                        conn.execute(
+                            f"ALTER TABLE {table} ADD COLUMN user_id INTEGER REFERENCES users(id)"
+                        )
 
-        # Create indexes (syntax is the same for both backends)
-        for idx_sql in _INDEXES:
-            conn.execute(idx_sql)
+            # Create indexes
+            for idx_sql in _INDEXES:
+                try:
+                    conn.execute(idx_sql)
+                except Exception:
+                    pass
+    except Exception as e:
+        import logging
+        logging.error("init_db failed: %s", e)
