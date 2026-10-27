@@ -1011,7 +1011,27 @@ def api_calculate_savings():
         current_savings=current_savings,
         extra_costs=extra_costs
     )
-    return jsonify({"plan": plan, "scenarios": scenarios})
+@app.route("/health")
+def health_check():
+    import db_adapter
+    status = {
+        "use_postgres": db_adapter.USE_POSTGRES,
+        "database_url_configured": bool(db_adapter.DATABASE_URL),
+        "database_url_prefix": db_adapter.DATABASE_URL[:20] + "..." if db_adapter.DATABASE_URL else "",
+        "backend": "unknown",
+        "error": None
+    }
+    try:
+        with db() as conn:
+            if db_adapter.USE_POSTGRES:
+                row = conn.execute("SELECT 1").fetchone()
+                status["backend"] = "PostgreSQL" if row else "PostgreSQL (no rows)"
+            else:
+                row = conn.execute("SELECT sqlite_version()").fetchone()
+                status["backend"] = f"SQLite ({row[0]})"
+    except Exception as e:
+        status["error"] = str(e)
+    return jsonify(status)
 
 # ── Database Initialisation (runs on import for Vercel, and on __main__ for local)
 try:
