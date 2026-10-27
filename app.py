@@ -1038,6 +1038,17 @@ def health_check():
         status["error"] = str(e)
     return jsonify(status)
 
+@app.route("/test-user/<int:uid>")
+def test_user_debug(uid):
+    with db() as conn:
+        u = conn.execute("SELECT id, full_name, email FROM users WHERE id=?", (uid,)).fetchone()
+        all_u = conn.execute("SELECT id, email FROM users").fetchall()
+    return jsonify({
+        "searched_id": uid,
+        "found": dict(u) if u else None,
+        "all_users": [dict(x) for x in all_u]
+    })
+
 # ── Database Initialisation (runs on import for Vercel, and on __main__ for local)
 try:
     init_db()

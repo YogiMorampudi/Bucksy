@@ -153,11 +153,16 @@ class _PgConnectionWrapper:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            self._conn.rollback()
-        else:
-            self._conn.commit()
-        # Don't close — let the caller manage lifecycle
+        try:
+            if exc_type:
+                self._conn.rollback()
+            else:
+                self._conn.commit()
+        finally:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
         return False
 
 
