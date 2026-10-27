@@ -1041,12 +1041,12 @@ def health_check():
 @app.route("/test-user/<int:uid>")
 def test_user_debug(uid):
     with db() as conn:
-        u = conn.execute("SELECT id, full_name, email FROM users WHERE id=?", (uid,)).fetchone()
-        all_u = conn.execute("SELECT id, email FROM users").fetchall()
+        cur = conn.execute("SELECT id, email, full_name FROM users")
+        cols = [desc[0] for desc in cur._cur.description]
+        raw_rows = cur._cur.fetchall()
     return jsonify({
-        "searched_id": uid,
-        "found": dict(u) if u else None,
-        "all_users": [dict(x) for x in all_u]
+        "cols": cols,
+        "raw_rows": raw_rows
     })
 
 # ── Database Initialisation (runs on import for Vercel, and on __main__ for local)
