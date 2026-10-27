@@ -73,18 +73,22 @@ def clear_rate_limit(email):
     with db() as conn:
         conn.execute("DELETE FROM login_attempts WHERE email = ?", (email.lower().strip(),))
 
-# ── User Loader & Auth Middleware ─────────────────────────────────────────────
 @app.before_request
 def load_user():
     g.current_user = None
     user_id = session.get("user_id")
     if user_id:
-        with db() as conn:
-            user = conn.execute("SELECT id, full_name, email, created_at, updated_at FROM users WHERE id=?", (user_id,)).fetchone()
-            if user:
-                g.current_user = dict(user)
-            else:
-                session.clear()
+        try:
+            with db() as conn:
+                user = conn.execute("SELECT id, full_name, email, created_at, updated_at FROM users WHERE id=?", (user_id,)).fetchone()
+                if user:
+                    g.current_user = dict(user)
+                else:
+                    # User was genuinely deleted from DB
+                    session.clear()
+        except Exception:
+            # Temporary DB lock or connection error - don't clear session prematurely
+            pass
 
 @app.before_request
 def verify_csrf():

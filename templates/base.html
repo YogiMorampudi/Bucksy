@@ -42,7 +42,10 @@
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
           <small class="local-note">🔒 Authenticated</small>
-          <a href="{{ url_for('logout') }}" class="sign-out-btn" title="Sign out of Bucksy">Sign out ⎋</a>
+          <form method="post" action="{{ url_for('logout') }}" style="margin:0; padding:0; display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="sign-out-btn" title="Sign out of Bucksy">Sign out ⎋</button>
+          </form>
         </div>
         {% else %}
         <div class="mini-profile">
