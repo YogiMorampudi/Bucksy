@@ -17,6 +17,21 @@ import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
 
+# ── Environment Loader ────────────────────────────────────────────────────────
+for _env_file in (".env.local", ".env"):
+    _p = Path(__file__).parent / _env_file
+    if _p.exists():
+        try:
+            for _line in _p.read_text(encoding="utf-8").splitlines():
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    _k, _v = _k.strip(), _v.strip().strip('"').strip("'")
+                    if _k not in os.environ:
+                        os.environ[_k] = _v
+        except Exception:
+            pass
+
 # ── Backend Selection ─────────────────────────────────────────────────────────
 # Set DATABASE_URL to a PostgreSQL connection string to use Postgres.
 # Example: postgresql://user:pass@host:5432/dbname
@@ -50,7 +65,8 @@ def _rewrite_placeholders(sql):
         if m.group(1):
             return "%s"
         return m.group(0)
-    return _Q_RE.sub(_replacer, sql)
+    sql = _Q_RE.sub(_replacer, sql)
+    return re.sub(r"(?i)\bcollate\s+nocase\b", "", sql)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -199,6 +215,7 @@ CREATE TABLE IF NOT EXISTS users (
     full_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -282,6 +299,7 @@ CREATE TABLE IF NOT EXISTS users (
     full_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -355,6 +373,13 @@ CREATE TABLE IF NOT EXISTS goals (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE OR REPLACE FUNCTION strftime(format text, val text)
+RETURNS text AS $$
+BEGIN
+    RETURN SUBSTRING(val FROM 1 FOR 7);
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
 """
 
 _INDEXES = [
@@ -387,12 +412,18 @@ def init_db():
     """Create all tables, run migrations, and create indexes."""
     try:
         with db() as conn:
-            if USE_POSTGRES:
+            is_pg = isinstance(conn, _PgConnectionWrapper)
+            if is_pg:
                 try:
                     conn.executescript(_POSTGRES_SCHEMA)
                 except Exception as e:
                     import logging
                     logging.error("Failed to execute postgres schema: %s", e)
+
+                try:
+                    conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin INTEGER NOT NULL DEFAULT 0")
+                except Exception:
+                    pass
 
                 for table in ("transactions", "people", "khata_entries", "goals"):
                     try:
@@ -404,12 +435,24 @@ def init_db():
             else:
                 conn.executescript(_SQLITE_SCHEMA)
 
+                # Migration: add is_admin if missing
+                if not _sqlite_column_exists(conn, "users", "is_admin"):
+                    conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+
                 # Migration: add user_id if missing
                 for table in ("transactions", "people", "khata_entries", "goals"):
                     if not _sqlite_column_exists(conn, table, "user_id"):
                         conn.execute(
                             f"ALTER TABLE {table} ADD COLUMN user_id INTEGER REFERENCES users(id)"
                         )
+
+            # Ensure initial admin user
+            try:
+                conn.execute(
+                    "UPDATE users SET is_admin = 1 WHERE email = 'yogimorampudi1122@gmail.com' OR id = (SELECT MIN(id) FROM users)"
+                )
+            except Exception:
+                pass
 
             # Create indexes
             for idx_sql in _INDEXES:

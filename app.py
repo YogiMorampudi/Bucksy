@@ -80,7 +80,7 @@ def load_user():
     if user_id:
         try:
             with db() as conn:
-                user = conn.execute("SELECT id, full_name, email, created_at, updated_at FROM users WHERE id=?", (user_id,)).fetchone()
+                user = conn.execute("SELECT id, full_name, email, is_admin, created_at, updated_at FROM users WHERE id=?", (user_id,)).fetchone()
                 if user:
                     g.current_user = dict(user)
                 else:
@@ -126,6 +126,23 @@ def login_required(f):
             return redirect(url_for("login", next=next_url))
         return f(*args, **kwargs)
     return decorated_function
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not g.get("current_user"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Unauthorized. Please sign in."}), 401
+            flash("Please sign in to access the admin panel.", "error")
+            return redirect(url_for("login", next=request.path))
+        if not g.current_user.get("is_admin"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Forbidden: Administrator privileges required."}), 403
+            flash("Access denied: Administrator privileges required.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated_function
+
 
 @app.template_filter("inr")
 def inr(value):
@@ -370,13 +387,13 @@ def dashboard():
 
         # Monthly income vs expenses for chart (last 6 months for current user)
         monthly_rows = conn.execute("""
-            SELECT strftime('%Y-%m', txn_date) AS month,
+            SELECT SUBSTR(txn_date, 1, 7) AS month,
                    SUM(CASE WHEN kind='income' THEN amount ELSE 0 END) AS income,
                    SUM(CASE WHEN kind='expense' THEN amount ELSE 0 END) AS expenses
             FROM transactions
             WHERE user_id = ?
-            GROUP BY month
-            ORDER BY month DESC
+            GROUP BY 1
+            ORDER BY 1 DESC
             LIMIT 6
         """, (user_id,)).fetchall()
         monthly_data = list(reversed(monthly_rows))
@@ -392,15 +409,15 @@ def dashboard():
         if month_filter:
             recent = conn.execute("""
                 SELECT * FROM transactions
-                WHERE user_id = ? AND strftime('%Y-%m', txn_date) = ?
+                WHERE user_id = ? AND SUBSTR(txn_date, 1, 7) = ?
                 ORDER BY txn_date DESC, id DESC LIMIT 10
             """, (user_id, month_filter)).fetchall()
             m_income = conn.execute(
-                "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE kind='income' AND user_id=? AND strftime('%Y-%m',txn_date)=?",
+                "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE kind='income' AND user_id=? AND SUBSTR(txn_date, 1, 7)=?",
                 (user_id, month_filter)
             ).fetchone()[0]
             m_expenses = conn.execute(
-                "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE kind='expense' AND user_id=? AND strftime('%Y-%m',txn_date)=?",
+                "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE kind='expense' AND user_id=? AND SUBSTR(txn_date, 1, 7)=?",
                 (user_id, month_filter)
             ).fetchone()[0]
         else:
@@ -411,7 +428,7 @@ def dashboard():
             m_expenses = expenses
 
         months_avail = conn.execute("""
-            SELECT DISTINCT strftime('%Y-%m', txn_date) AS m FROM transactions WHERE user_id=? ORDER BY m DESC
+            SELECT DISTINCT SUBSTR(txn_date, 1, 7) AS m FROM transactions WHERE user_id=? ORDER BY m DESC
         """, (user_id,)).fetchall()
 
     balance = income - expenses - lent + received_back + borrowed - repaid
@@ -632,7 +649,7 @@ def khata():
         return redirect(url_for("khata"))
 
     with db() as conn:
-        people = conn.execute("SELECT * FROM people WHERE user_id=? ORDER BY name COLLATE NOCASE", (user_id,)).fetchall()
+        people = conn.execute("SELECT * FROM people WHERE user_id=? ORDER BY LOWER(name)", (user_id,)).fetchall()
         entries = conn.execute("""
             SELECT k.*, p.name FROM khata_entries k
             JOIN people p ON p.id=k.person_id
@@ -648,7 +665,7 @@ def khata():
             FROM people p
             LEFT JOIN khata_entries k ON k.person_id=p.id AND k.user_id=?
             WHERE p.user_id=?
-            GROUP BY p.id ORDER BY p.name COLLATE NOCASE
+            GROUP BY p.id ORDER BY LOWER(p.name)
         """, (user_id, user_id)).fetchall()
 
     return render_template("khata.html", people=people, entries=entries, summaries=summaries,
@@ -1041,13 +1058,140 @@ def health_check():
 @app.route("/test-user/<int:uid>")
 def test_user_debug(uid):
     with db() as conn:
-        cur = conn.execute("SELECT id, email, full_name FROM users")
-        cols = [desc[0] for desc in cur._cur.description]
-        raw_rows = cur._cur.fetchall()
+        rows = conn.execute("SELECT id, email, full_name FROM users WHERE id=?", (uid,)).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+# ── Admin Panel & User Management ─────────────────────────────────────────────
+
+def _get_all_users_with_stats(conn):
+    users = conn.execute("SELECT id, full_name, email, is_admin, created_at FROM users ORDER BY id ASC").fetchall()
+    result = []
+    for u in users:
+        u_dict = dict(u)
+        uid = u_dict["id"]
+        tx_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE user_id = ?", (uid,)).fetchone()[0]
+        tx_vol = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ?", (uid,)).fetchone()[0]
+        goals_count = conn.execute("SELECT COUNT(*) FROM goals WHERE user_id = ?", (uid,)).fetchone()[0]
+        people_count = conn.execute("SELECT COUNT(*) FROM people WHERE user_id = ?", (uid,)).fetchone()[0]
+        u_dict["transactions_count"] = tx_count
+        u_dict["transactions_volume"] = tx_vol
+        u_dict["goals_count"] = goals_count
+        u_dict["people_count"] = people_count
+        result.append(u_dict)
+    return result
+
+@app.route("/admin")
+@admin_required
+def admin_panel():
+    with db() as conn:
+        users = _get_all_users_with_stats(conn)
+        total_users = len(users)
+        total_txns = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+        total_vol = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions").fetchone()[0]
+        total_goals = conn.execute("SELECT COUNT(*) FROM goals").fetchone()[0]
+
+    return render_template(
+        "admin.html",
+        users=users,
+        total_users=total_users,
+        total_transactions=total_txns,
+        total_volume=total_vol,
+        total_goals=total_goals
+    )
+
+@app.route("/admin/users/<int:uid>/toggle-admin", methods=["POST"])
+@admin_required
+def admin_toggle_role(uid):
+    if g.current_user["id"] == uid:
+        flash("You cannot remove your own admin privileges.", "error")
+        return redirect(url_for("admin_panel"))
+
+    with db() as conn:
+        target = conn.execute("SELECT is_admin, email FROM users WHERE id=?", (uid,)).fetchone()
+        if not target:
+            flash("User not found.", "error")
+        else:
+            new_role = 0 if target["is_admin"] else 1
+            conn.execute("UPDATE users SET is_admin=? WHERE id=?", (new_role, uid))
+            role_name = "Admin" if new_role else "Standard User"
+            flash(f"User {target['email']} is now a {role_name}.", "success")
+    return redirect(url_for("admin_panel"))
+
+@app.route("/admin/users/<int:uid>/delete", methods=["POST"])
+@admin_required
+def admin_delete_user(uid):
+    if g.current_user["id"] == uid:
+        flash("You cannot delete your own account from the Admin Panel.", "error")
+        return redirect(url_for("admin_panel"))
+
+    with db() as conn:
+        target = conn.execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
+        if not target:
+            flash("User not found.", "error")
+        else:
+            conn.execute("DELETE FROM transactions WHERE user_id=?", (uid,))
+            conn.execute("DELETE FROM khata_entries WHERE user_id=?", (uid,))
+            conn.execute("DELETE FROM people WHERE user_id=?", (uid,))
+            conn.execute("DELETE FROM goals WHERE user_id=?", (uid,))
+            conn.execute("DELETE FROM password_reset_tokens WHERE user_id=?", (uid,))
+            conn.execute("DELETE FROM users WHERE id=?", (uid,))
+            flash(f"User {target['email']} and all associated records were deleted.", "success")
+    return redirect(url_for("admin_panel"))
+
+# ── Admin JSON APIs (for React Frontend) ───────────────────────────────────────
+
+@app.route("/api/admin/stats")
+@admin_required
+def api_admin_stats():
+    with db() as conn:
+        total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        total_txns = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+        total_vol = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions").fetchone()[0]
+        total_goals = conn.execute("SELECT COUNT(*) FROM goals").fetchone()[0]
     return jsonify({
-        "cols": cols,
-        "raw_rows": raw_rows
+        "total_users": total_users,
+        "total_transactions": total_txns,
+        "total_volume": total_vol,
+        "total_goals": total_goals
     })
+
+@app.route("/api/admin/users")
+@admin_required
+def api_admin_users():
+    with db() as conn:
+        users = _get_all_users_with_stats(conn)
+    return jsonify({"users": users})
+
+@app.route("/api/admin/users/<int:uid>/toggle-admin", methods=["POST"])
+@admin_required
+def api_admin_toggle_role(uid):
+    if g.current_user["id"] == uid:
+        return jsonify({"error": "Cannot change your own admin role"}), 400
+    with db() as conn:
+        target = conn.execute("SELECT is_admin, email FROM users WHERE id=?", (uid,)).fetchone()
+        if not target:
+            return jsonify({"error": "User not found"}), 404
+        new_role = 0 if target["is_admin"] else 1
+        conn.execute("UPDATE users SET is_admin=? WHERE id=?", (new_role, uid))
+    return jsonify({"success": True, "is_admin": new_role})
+
+@app.route("/api/admin/users/<int:uid>", methods=["DELETE"])
+@admin_required
+def api_admin_delete_user(uid):
+    if g.current_user["id"] == uid:
+        return jsonify({"error": "Cannot delete your own account"}), 400
+    with db() as conn:
+        target = conn.execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
+        if not target:
+            return jsonify({"error": "User not found"}), 404
+        conn.execute("DELETE FROM transactions WHERE user_id=?", (uid,))
+        conn.execute("DELETE FROM khata_entries WHERE user_id=?", (uid,))
+        conn.execute("DELETE FROM people WHERE user_id=?", (uid,))
+        conn.execute("DELETE FROM goals WHERE user_id=?", (uid,))
+        conn.execute("DELETE FROM password_reset_tokens WHERE user_id=?", (uid,))
+        conn.execute("DELETE FROM users WHERE id=?", (uid,))
+    return jsonify({"success": True, "deleted_email": target["email"]})
 
 # ── Database Initialisation (runs on import for Vercel, and on __main__ for local)
 try:

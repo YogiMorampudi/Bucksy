@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel{% endblock %}
+{% block page_heading %}Admin Panel{% endblock %}
+{% block content %}
+
+<section class="welcome-row">
+  <div>
+    <h2>Platform Administration & User Management 🛡️</h2>
+    <p>Manage registered accounts, monitor user activity, and maintain system access privileges.</p>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <span class="status-pill" style="border-color:var(--amber, #f59e0b); color:var(--amber, #f59e0b);">
+      <span style="background:var(--amber, #f59e0b);"></span> Admin Mode
+    </span>
+  </div>
+</section>
+
+{# ── Top Stat Cards ── #}
+<div class="stats-grid" style="margin-bottom: 24px;">
+  <div class="stat-card">
+    <div class="stat-top">
+      <span class="stat-label">Total Users</span>
+      <span class="stat-icon purple">👥</span>
+    </div>
+    <div class="stat-val">{{ total_users }}</div>
+    <div class="stat-sub">Registered accounts</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-top">
+      <span class="stat-label">Total Transactions</span>
+      <span class="stat-icon blue">⇄</span>
+    </div>
+    <div class="stat-val">{{ total_transactions }}</div>
+    <div class="stat-sub">Across all users</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-top">
+      <span class="stat-label">Platform Volume</span>
+      <span class="stat-icon green">₹</span>
+    </div>
+    <div class="stat-val">{{ total_volume|inr }}</div>
+    <div class="stat-sub">Logged transaction flow</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-top">
+      <span class="stat-label">Savings Goals</span>
+      <span class="stat-icon amber">🎯</span>
+    </div>
+    <div class="stat-val">{{ total_goals }}</div>
+    <div class="stat-sub">Active & achieved goals</div>
+  </div>
+</div>
+
+{# ── User Management Section ── #}
+<section class="panel">
+  <div class="panel-heading" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+    <div>
+      <h3>User Directory ({{ users|length }})</h3>
+      <p>View accounts, inspect transaction volume, and manage administrator roles</p>
+    </div>
+    <div>
+      <input type="text" id="adminUserSearch" placeholder="Search by name or email..." 
+             style="padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); min-width: 250px;">
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table" id="adminUsersTable">
+      <thead>
+        <tr>
+          <th style="width: 50px;">ID</th>
+          <th>User</th>
+          <th>Role</th>
+          <th>Joined Date</th>
+          <th>Transactions</th>
+          <th>Goals</th>
+          <th>Khata Contacts</th>
+          <th style="text-align: right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr class="user-row" data-search="{{ u.full_name|lower }} {{ u.email|lower }}">
+          <td style="color:var(--muted); font-family:monospace;">#{{ u.id }}</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div class="avatar" style="width:34px; height:34px; font-size:14px; border-radius:50%; background:var(--panel2); display:flex; align-items:center; justify-content:center; font-weight:700;">
+                {{ u.full_name[:1]|upper }}
+              </div>
+              <div>
+                <strong>{{ u.full_name }}</strong>
+                {% if u.id == current_user.id %}
+                  <span style="font-size:11px; margin-left:6px; color:var(--green); font-weight:600;">(You)</span>
+                {% endif %}
+                <small style="display:block; color:var(--muted2);">{{ u.email }}</small>
+              </div>
+            </div>
+          </td>
+          <td>
+            {% if u.is_admin %}
+              <span class="badge" style="background:rgba(245, 158, 11, 0.15); color:#f59e0b; border:1px solid rgba(245, 158, 11, 0.3); padding:3px 9px; border-radius:6px; font-size:11px; font-weight:700;">
+                🛡️ Admin
+              </span>
+            {% else %}
+              <span class="badge" style="background:rgba(59, 130, 246, 0.1); color:#3b82f6; border:1px solid rgba(59, 130, 246, 0.2); padding:3px 9px; border-radius:6px; font-size:11px; font-weight:600;">
+                👤 Member
+              </span>
+            {% endif %}
+          </td>
+          <td style="color:var(--muted); font-size:13px;">
+            {{ u.created_at[:10] }}
+          </td>
+          <td>
+            <strong>{{ u.transactions_count }}</strong>
+            <small style="color:var(--muted2); display:block;">{{ u.transactions_volume|inr }}</small>
+          </td>
+          <td>
+            <span class="badge" style="background:var(--panel2); padding:3px 8px; border-radius:6px; font-size:12px;">
+              {{ u.goals_count }}
+            </span>
+          </td>
+          <td>
+            <span class="badge" style="background:var(--panel2); padding:3px 8px; border-radius:6px; font-size:12px;">
+              {{ u.people_count }}
+            </span>
+          </td>
+          <td style="text-align: right;">
+            <div style="display:inline-flex; align-items:center; gap:8px;">
+              {# Toggle Admin Role Form #}
+              {% if u.id != current_user.id %}
+              <form method="post" action="{{ url_for('admin_toggle_role', uid=u.id) }}" style="display:inline; margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="button secondary sm" style="font-size:11px; padding:5px 10px;"
+                        title="{{ 'Demote to regular member' if u.is_admin else 'Promote to Admin' }}">
+                  {{ 'Demote' if u.is_admin else 'Make Admin' }}
+                </button>
+              </form>
+
+              {# Delete User Form #}
+              <form method="post" action="{{ url_for('admin_delete_user', uid=u.id) }}" style="display:inline; margin:0;"
+                    onsubmit="return confirm('WARNING: Are you sure you want to permanently delete user {{ u.email }}? All their transactions, goals, and records will be deleted forever.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="button danger sm" style="font-size:11px; padding:5px 10px;" title="Permanently delete user">
+                  Delete
+                </button>
+              </form>
+              {% else %}
+              <span style="font-size:12px; color:var(--muted); font-style:italic;">Protected</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  // Dynamic client-side search for the user table
+  const searchInput = document.getElementById('adminUserSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', function(e) {
+      const term = e.target.value.toLowerCase().trim();
+      const rows = document.querySelectorAll('#adminUsersTable tbody tr.user-row');
+      rows.forEach(row => {
+        const searchData = row.getAttribute('data-search') || '';
+        if (searchData.includes(term)) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    });
+  }
+</script>
+
+{% endblock %}
+
