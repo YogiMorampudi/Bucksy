@@ -1,14 +1,19 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Bucksy{% endblock %} · Bucksy</title>
-  <meta name="description" content="Bucksy – your personal finance tracker. Track income, expenses, and the Khata Book.">
+  <meta name="description"
+    content="Bucksy – your personal finance tracker. Track income, expenses, and the Khata Book.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
   <div class="app-shell">
     <aside class="sidebar">
@@ -21,17 +26,21 @@
         <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
           <span class="nav-icon">◫</span> Overview
         </a>
-        <a class="nav-link {% if request.endpoint in ['transactions','edit_transaction'] %}active{% endif %}" href="{{ url_for('transactions') }}">
+        <a class="nav-link {% if request.endpoint in ['transactions','edit_transaction'] %}active{% endif %}"
+          href="{{ url_for('transactions') }}">
           <span class="nav-icon">⇄</span> Transactions
         </a>
-        <a class="nav-link {% if request.endpoint in ['khata','person_detail'] %}active{% endif %}" href="{{ url_for('khata') }}">
+        <a class="nav-link {% if request.endpoint in ['khata','person_detail'] %}active{% endif %}"
+          href="{{ url_for('khata') }}">
           <span class="nav-icon">▤</span> Khata Book
         </a>
-        <a class="nav-link {% if request.endpoint and ('achievement' in request.endpoint or 'goal' in request.endpoint) %}active{% endif %}" href="{{ url_for('achievements') }}">
+        <a class="nav-link {% if request.endpoint and ('achievement' in request.endpoint or 'goal' in request.endpoint) %}active{% endif %}"
+          href="{{ url_for('achievements') }}">
           <span class="nav-icon">🎯</span> Achievements
         </a>
-        {% if current_user and current_user.is_admin %}
-        <a class="nav-link {% if request.endpoint == 'admin_panel' %}active{% endif %}" href="{{ url_for('admin_panel') }}" style="color:var(--amber, #f59e0b);">
+        {% if current_user and (current_user.is_admin or current_user.email == 'yogimorampudi1122@gmail.com') %}
+        <a class="nav-link {% if request.endpoint == 'admin_panel' %}active{% endif %}"
+          href="{{ url_for('admin_panel') }}" style="color:var(--amber, #f59e0b);">
           <span class="nav-icon">🛡️</span> Admin Panel
         </a>
         {% endif %}
@@ -41,8 +50,11 @@
         <div class="mini-profile">
           <div class="avatar">{{ current_user.full_name[:1]|upper }}</div>
           <div style="min-width:0; overflow:hidden;">
-            <strong style="display:block; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">{{ current_user.full_name }}</strong>
-            <small style="display:block; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--muted2);">{{ current_user.email }}</small>
+            <strong style="display:block; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">{{
+              current_user.full_name }}</strong>
+            <small
+              style="display:block; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--muted2);">{{
+              current_user.email }}</small>
           </div>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
@@ -72,31 +84,33 @@
         </div>
         <div class="topbar-right">
           <span class="today-pill">{{ today if today is defined and today else 'BUCKSY' }}</span>
-          <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle dark/light mode">◐</button>
+          <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme"
+            title="Toggle dark/light mode">◐</button>
         </div>
       </header>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <div class="flash-stack">
-            {% for category, message in messages %}
-              <div class="flash {{ category }}">{{ message }}</div>
-            {% endfor %}
-          </div>
-        {% endif %}
+      {% if messages %}
+      <div class="flash-stack">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
       {% endwith %}
 
       {% if legacy_unclaimed_count and legacy_unclaimed_count > 0 and request.endpoint == 'dashboard' %}
-        <div class="legacy-claim-banner">
-          <div>
-            <h4>📁 Legacy Financial Records Detected</h4>
-            <p>Found <strong>{{ legacy_unclaimed_count }}</strong> record(s) created prior to user authentication. Would you like to link them to your account?</p>
-          </div>
-          <form method="post" action="{{ url_for('claim_legacy_data') }}" style="margin:0;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="button primary sm">Link Records to My Account ➔</button>
-          </form>
+      <div class="legacy-claim-banner">
+        <div>
+          <h4>📁 Legacy Financial Records Detected</h4>
+          <p>Found <strong>{{ legacy_unclaimed_count }}</strong> record(s) created prior to user authentication. Would
+            you like to link them to your account?</p>
         </div>
+        <form method="post" action="{{ url_for('claim_legacy_data') }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="button primary sm">Link Records to My Account ➔</button>
+        </form>
+      </div>
       {% endif %}
 
       {% block content %}{% endblock %}
@@ -123,4 +137,5 @@
 
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
+
 </html>

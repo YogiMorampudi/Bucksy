@@ -30,7 +30,7 @@ git branch -M main
 
 echo.
 echo Pushing to GitHub (main branch)...
-git push -u origin main
+git push -u origin main --force
 
 if %errorlevel% equ 0 (
     echo.
